@@ -151,7 +151,7 @@ export default function DashboardFacturacion() {
         ))}
       </div>
 
-      {error && <div style={S.error}>Error: {error} · Verifica que el backend está en el puerto 3001.</div>}
+      {error && <div style={S.error}>Error: {error}</div>}
       {loading && <div style={S.loading}>Cargando datos de facturación…</div>}
 
       {!loading && resumen && (
