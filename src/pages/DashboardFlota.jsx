@@ -184,12 +184,13 @@ export default function DashboardFlota() {
               <KPICard label="Nº repostajes" value={g.num_repostajes ?? '—'} sub="En el rango" theme="gray" />
             </div>
             <div className="kpi-row" style={{ marginTop: 12 }}>
+              <KPICard label="Km totales (tacógrafo)" value={fmtNum(k.km_tacografo_total, ' km')} sub="Km reales recorridos en el rango" theme="blue" />
+              <KPICard label="Km totales (Google)" value={fmtNum(k.km_google_total, ' km')} sub="Km planificados por enrutamiento" theme="white" />
               <KPICard label="Desviación km total" value={fmtDesv(k.desviacion_km_total, ' km')} sub="Tacógrafo − Google Maps"
                 forceGreen={k.desviacion_km_total < 0} forceRed={k.desviacion_km_total > 0} />
               <KPICard label="Desviación km media" value={fmtDesv(k.desviacion_km_media, ' km')} sub="Por ruta — tacógrafo vs enrutamiento"
                 forceGreen={k.desviacion_km_media < 0} forceRed={k.desviacion_km_media > 0} />
               <KPICard label="Rutas analizadas" value={k.num_rutas ?? '—'} sub="Con km Google y tacógrafo" theme="gray" />
-              <div style={{ flex: 1 }} />
             </div>
           </div>
 

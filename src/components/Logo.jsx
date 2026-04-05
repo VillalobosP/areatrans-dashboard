@@ -1,64 +1,109 @@
 import React from 'react';
 
 export default function Logo({ height = 60 }) {
+  const scale = height / 60;
+
   return (
-    <svg
-      height={height}
-      viewBox="0 0 360 90"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ display: 'block' }}
-      aria-label="DIA Getafe · AT Areatrans"
-    >
-      <defs>
-        <clipPath id="pill-clip">
-          <rect x="0" y="0" width="360" height="90" rx="14" ry="14" />
-        </clipPath>
-      </defs>
+    <div style={{ display: 'flex', alignItems: 'stretch', height, borderRadius: 10, overflow: 'hidden', border: '1px solid #444', flexShrink: 0 }}>
 
-      {/* Mitad izquierda — negra (DIA) */}
-      <rect x="0" y="0" width="165" height="90" fill="#111111" clipPath="url(#pill-clip)" />
-      {/* Mitad derecha — blanca/gris (Areatrans) */}
-      <rect x="165" y="0" width="195" height="90" fill="#f0f0f0" clipPath="url(#pill-clip)" />
+      {/* ── Lado izquierdo: DIA % ── */}
+      <div style={{
+        background: '#111',
+        padding: `0 ${14 * scale}px`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6 * scale,
+        borderRight: '1px solid #444',
+      }}>
+        {/* "Dia" en rojo */}
+        <span style={{
+          fontFamily: 'Arial Black, Arial',
+          fontWeight: 900,
+          fontSize: 26 * scale,
+          color: '#e8000d',
+          letterSpacing: -1,
+          lineHeight: 1,
+        }}>Dia</span>
 
-      {/* Separador vertical */}
-      <line x1="165" y1="0" x2="165" y2="90" stroke="#444" strokeWidth="1.5" />
+        {/* Cuadrado rojo con % */}
+        <div style={{
+          background: '#e8000d',
+          borderRadius: 5 * scale,
+          width: 30 * scale,
+          height: 30 * scale,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <span style={{
+            fontFamily: 'Arial Black, Arial',
+            fontWeight: 900,
+            fontSize: 18 * scale,
+            color: '#fff',
+            lineHeight: 1,
+          }}>%</span>
+        </div>
 
-      {/* Borde exterior */}
-      <rect x="1" y="1" width="358" height="88" rx="13" ry="13"
-        fill="none" stroke="#444" strokeWidth="1.5" />
+        {/* GETAFE vertical */}
+        <span style={{
+          fontFamily: 'Arial, sans-serif',
+          fontWeight: 700,
+          fontSize: 9 * scale,
+          color: '#aaa',
+          letterSpacing: 2.5,
+          writingMode: 'vertical-lr',
+          transform: 'rotate(180deg)',
+        }}>GETAFE</span>
+      </div>
 
-      {/* ── Lado izquierdo: DIA ──────────────────────────────── */}
-      {/* "Dia" en rojo */}
-      <text x="14" y="44" fontFamily="Arial Black, Arial" fontWeight="900"
-        fontSize="32" fill="#e8000d" letterSpacing="-1">Dia</text>
+      {/* ── Lado derecho: AT areatrans ── */}
+      <div style={{
+        background: '#f0f0f0',
+        padding: `0 ${12 * scale}px`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8 * scale,
+      }}>
+        {/* Rombo con AT */}
+        <div style={{
+          width: 36 * scale,
+          height: 36 * scale,
+          background: '#1e3a8a',
+          transform: 'rotate(45deg)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          borderRadius: 3 * scale,
+        }}>
+          <span style={{
+            transform: 'rotate(-45deg)',
+            fontFamily: 'Arial Black, Arial',
+            fontWeight: 900,
+            fontSize: 11 * scale,
+            color: '#f59e0b',
+            lineHeight: 1,
+          }}>AT</span>
+        </div>
 
-      {/* Cuadrado rojo con % */}
-      <rect x="70" y="10" width="40" height="40" rx="6" fill="#e8000d" />
-      <text x="90" y="37" fontFamily="Arial Black, Arial" fontWeight="900"
-        fontSize="25" fill="white" textAnchor="middle">%</text>
-      {/* Punto debajo del % */}
-      <circle cx="90" cy="56" r="4" fill="#e8000d" />
+        {/* area + trans + subtítulo */}
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ lineHeight: 1.1 }}>
+            <span style={{ fontFamily: 'Arial, sans-serif', fontWeight: 800, fontSize: 18 * scale, color: '#f59e0b' }}>area</span>
+            <span style={{ fontFamily: 'Arial, sans-serif', fontWeight: 800, fontSize: 18 * scale, color: '#1e3a8a' }}>trans</span>
+          </div>
+          <span style={{
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 600,
+            fontSize: 7 * scale,
+            color: '#1e3a8a',
+            letterSpacing: 1.2,
+            textTransform: 'uppercase',
+          }}>Servicios de Transporte</span>
+        </div>
+      </div>
 
-      {/* "GETAFE" */}
-      <text x="14" y="76" fontFamily="Arial, sans-serif" fontWeight="700"
-        fontSize="13" fill="#cccccc" letterSpacing="3">GETAFE</text>
-
-      {/* ── Lado derecho: AT areatrans ───────────────────────── */}
-      {/* Rombo azul con "AT" */}
-      <polygon points="188,45 208,22 228,45 208,68" fill="#1e3a8a" />
-      <text x="208" y="51" fontFamily="Arial Black, Arial" fontWeight="900"
-        fontSize="16" fill="#f59e0b" textAnchor="middle">AT</text>
-
-      {/* "area" naranja */}
-      <text x="236" y="42" fontFamily="Arial, sans-serif" fontWeight="800"
-        fontSize="22" fill="#f59e0b">area</text>
-      {/* "trans" azul */}
-      <text x="285" y="42" fontFamily="Arial, sans-serif" fontWeight="800"
-        fontSize="22" fill="#1e3a8a">trans</text>
-
-      {/* Subtítulo */}
-      <text x="236" y="62" fontFamily="Arial, sans-serif" fontWeight="600"
-        fontSize="9" fill="#1e3a8a" letterSpacing="1.2">SERVICIOS DE TRANSPORTE</text>
-    </svg>
+    </div>
   );
 }
