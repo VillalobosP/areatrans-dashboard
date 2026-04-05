@@ -13,7 +13,9 @@
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "server/index.js" },
-    { "handle": "filesystem" },
+    { "src": "^/static/(.*)", "dest": "/static/$1" },
+    { "src": "^/favicon.ico", "dest": "/favicon.ico" },
+    { "src": "^/manifest.json", "dest": "/manifest.json" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
