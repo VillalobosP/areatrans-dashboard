@@ -20,14 +20,13 @@ const CENTROS = {
   illescas: {
     id:    'illescas',
     label: 'ILLESCAS',
-    // ⚠ Rellena el ID de la hoja de ILLESCAS aquí o en .env como ILLESCAS_SHEET_ID
-    sheetId: process.env.ILLESCAS_SHEET_ID || '',
+    sheetId: '1PloSwT20dFVmF2w-tseaDscnKZ_35a6H9PPgpP6xBOc',
     sheets: {
       enrutamiento: 'PRUEBA ENRUTAMIENTO AUTOMATICO ILLESCAS',
-      calendario:   'CALENDARIO',
-      gasoil:       'GASOIL',
+      gasoil:       'GASOIL ILLESCAS',
+      // Sin pestaña calendario — Illescas no usa KPIs de rutas
     },
-    objetivos: { min: 225, obj: 250 },
+    features: ['facturacion_lotes', 'gasoil'],
   },
 };
 

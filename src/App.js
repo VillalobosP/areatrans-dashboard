@@ -11,17 +11,25 @@ import AdminUsers      from './pages/AdminUsers';
 import DashboardRutas      from './pages/DashboardRutas';
 import DashboardFacturacion from './pages/DashboardFacturacion';
 import DashboardFlota      from './pages/DashboardFlota';
+import DashboardIllescas   from './pages/DashboardIllescas';
 import './index.css';
 
 // ── Etiquetas de centros ───────────────────────────────────────────────────────
 const CENTRO_LABELS = { getafe: 'GETAFE', illescas: 'ILLESCAS' };
 
-// ── Tabs disponibles por centro (mismas para todos) ───────────────────────────
-const TABS = [
-  { id: 'rutas',        label: 'Rutas' },
-  { id: 'facturacion',  label: 'Facturación' },
-  { id: 'flota',        label: 'Flota & Gasoil' },
-];
+// ── Tabs por centro ────────────────────────────────────────────────────────────
+const TABS_BY_CENTRO = {
+  getafe: [
+    { id: 'rutas',       label: 'Rutas' },
+    { id: 'facturacion', label: 'Facturación' },
+    { id: 'flota',       label: 'Flota & Gasoil' },
+  ],
+  illescas: [
+    { id: 'facturacion', label: 'Facturación & Lotes' },
+    { id: 'flota',       label: 'Flota & Gasoil' },
+  ],
+};
+const DEFAULT_TABS = TABS_BY_CENTRO.getafe;
 
 // ── Ruta protegida ─────────────────────────────────────────────────────────────
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -37,6 +45,9 @@ function DashboardLayout() {
   const { centro, tab }  = useParams();
   const navigate          = useNavigate();
 
+  const TABS = TABS_BY_CENTRO[centro] || DEFAULT_TABS;
+  const defaultTab = TABS[0]?.id || 'facturacion';
+
   // Si el usuario no tiene acceso a este centro → primer centro disponible
   if (!user.centros?.includes(centro)) {
     const fallback = user.centros?.[0];
@@ -45,12 +56,12 @@ function DashboardLayout() {
         No tienes acceso a ningún centro. Contacta con el administrador.
       </div>
     );
-    return <Navigate to={`/dashboard/${fallback}/rutas`} replace />;
+    return <Navigate to={`/dashboard/${fallback}/${defaultTab}`} replace />;
   }
 
-  // Si el tab no es válido, redirige a rutas
+  // Si el tab no es válido para este centro, redirige al primero
   if (!TABS.find(t => t.id === tab)) {
-    return <Navigate to={`/dashboard/${centro}/rutas`} replace />;
+    return <Navigate to={`/dashboard/${centro}/${defaultTab}`} replace />;
   }
 
   const centrosAccesibles = user.centros.filter(c => CENTRO_LABELS[c]);
@@ -147,9 +158,18 @@ function DashboardLayout() {
       </nav>
 
       {/* ── CONTENIDO ── */}
-      {tab === 'rutas'        && <DashboardRutas       centro={centro} />}
-      {tab === 'facturacion'  && <DashboardFacturacion centro={centro} />}
-      {tab === 'flota'        && <DashboardFlota        centro={centro} />}
+      {centro === 'illescas' ? (
+        <>
+          {tab === 'facturacion' && <DashboardIllescas centro={centro} />}
+          {tab === 'flota'       && <DashboardFlota    centro={centro} />}
+        </>
+      ) : (
+        <>
+          {tab === 'rutas'       && <DashboardRutas       centro={centro} />}
+          {tab === 'facturacion' && <DashboardFacturacion centro={centro} />}
+          {tab === 'flota'       && <DashboardFlota        centro={centro} />}
+        </>
+      )}
     </div>
   );
 }
@@ -193,8 +213,9 @@ function AdminLayout() {
 function RootRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  const centro = user.centros?.[0] || 'getafe';
-  return <Navigate to={`/dashboard/${centro}/rutas`} replace />;
+  const centro   = user.centros?.[0] || 'getafe';
+  const firstTab = (TABS_BY_CENTRO[centro] || DEFAULT_TABS)[0]?.id || 'rutas';
+  return <Navigate to={`/dashboard/${centro}/${firstTab}`} replace />;
 }
 
 // ── App principal ─────────────────────────────────────────────────────────────

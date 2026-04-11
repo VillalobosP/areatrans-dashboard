@@ -139,6 +139,7 @@ function buildEnrutRow(headers, row) {
     FACTURACION_PLANIFICADA: planificado > 0 ? coste_num : 0,
     FACTURACION_EXTRA:       extra > 0 ? coste_num : 0,
     DETALLE:                 (obj['DETALLE'] || '').trim(),
+    LOTE:                    (obj['LOTE']    || '').trim(),
   };
 }
 
@@ -225,6 +226,7 @@ app.get('/api/centros', (req, res) => {
 
 // ── GET /api/:centro/calendario ───────────────────────────────────────────────
 app.get('/api/:centro/calendario', requireCentroAccess, async (req, res) => {
+  if (!req.centro.sheets.calendario) return res.json([]);
   try {
     const { desde, hasta } = req.query;
     const [calRows, enrutRows] = await Promise.all([
@@ -390,10 +392,20 @@ app.get('/api/:centro/facturacion', requireCentroAccess, async (req, res) => {
       }
     });
 
+    // Agrupación por LOTE (Illescas)
+    const byLote = {};
+    filtradas.forEach(r => {
+      if (!r.LOTE) return;
+      if (!byLote[r.LOTE]) byLote[r.LOTE] = { lote: r.LOTE, total: 0, viajes: 0 };
+      byLote[r.LOTE].total  += r.FACTURACION_PLANIFICADA + r.FACTURACION_EXTRA;
+      byLote[r.LOTE].viajes += 1;
+    });
+
     res.json({
       porDia:        Object.values(byFecha).sort((a, b) => a.fecha.localeCompare(b.fecha)),
       porFacturador: Object.values(byFact).sort((a, b) => b.total - a.total),
       porMatricula:  Object.values(byMat).sort((a, b) => b.total - a.total).slice(0, 10),
+      porLote:       Object.values(byLote).sort((a, b) => b.total - a.total),
     });
   } catch (err) {
     console.error(`Error /api/${req.centro.id}/facturacion:`, err.message);
