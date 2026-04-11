@@ -7,10 +7,12 @@ import {
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload;
+  const detalles = d?.detallesExtra || [];
   return (
     <div style={{
       background: '#1e1e1e', border: '1px solid #3a3a3a',
-      borderRadius: 8, padding: '10px 14px', color: '#fff', fontSize: 13, minWidth: 180,
+      borderRadius: 8, padding: '10px 14px', color: '#fff', fontSize: 13,
+      minWidth: 180, maxWidth: 320,
     }}>
       <p style={{ margin: '0 0 8px', fontWeight: 700, color: '#ccc', fontSize: 12 }}>
         {fmtFechaCompleta(d?.fecha)}
@@ -20,6 +22,18 @@ const CustomTooltip = ({ active, payload }) => {
           {p.name}: <strong style={{ color: '#fff' }}>{p.value != null ? p.value : '—'}</strong>
         </p>
       ))}
+      {detalles.length > 0 && (
+        <div style={{ marginTop: 8, borderTop: '1px solid #2a2a2a', paddingTop: 8 }}>
+          {detalles.map((nota, i) => (
+            <div key={i} style={{
+              fontSize: 11, color: '#f59e0b', lineHeight: 1.5,
+              paddingLeft: 6, borderLeft: '2px solid #f59e0b', marginTop: i > 0 ? 4 : 0,
+            }}>
+              {nota}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -50,6 +64,7 @@ export default function GraficoViajes({ calendario }) {
     return {
       label:            `${parseInt(d, 10)} ${meses[parseInt(m, 10)]}`,
       fecha,
+      detallesExtra:    row.DETALLES_EXTRA || [],
       'Planificados':   row.VIAJES_PLANIFICADOS || 0,
       'Extra':          row.VIAJES_EXTRA        || 0,
       'Cuota mínima':   row.CUOTA_MIN_225_INCL > 0 ? round1(row.CUOTA_MIN_225_INCL) : null,

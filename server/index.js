@@ -233,12 +233,16 @@ app.get('/api/:centro/calendario', requireCentroAccess, async (req, res) => {
     ]);
 
     // Conteo de viajes planificados y extra por día desde ENRUTAMIENTO
+    // También recoge notas DETALLE de filas extra (solo si tienen texto)
     const tripsByDay = {};
     enrutRows.forEach(r => {
       if (!r.FECHA) return;
-      if (!tripsByDay[r.FECHA]) tripsByDay[r.FECHA] = { planificados: 0, extra: 0 };
+      if (!tripsByDay[r.FECHA]) tripsByDay[r.FECHA] = { planificados: 0, extra: 0, detalles: [] };
       if (r.CONTADOR_PLANIFICADO > 0) tripsByDay[r.FECHA].planificados++;
-      if (r.CONTADOR_EXTRAS      > 0) tripsByDay[r.FECHA].extra++;
+      if (r.CONTADOR_EXTRAS      > 0) {
+        tripsByDay[r.FECHA].extra++;
+        if (r.DETALLE) tripsByDay[r.FECHA].detalles.push(r.DETALLE);
+      }
     });
 
     const data = calRows
@@ -252,6 +256,7 @@ app.get('/api/:centro/calendario', requireCentroAccess, async (req, res) => {
         ...r,
         VIAJES_PLANIFICADOS: tripsByDay[r.FECHA]?.planificados || 0,
         VIAJES_EXTRA:        tripsByDay[r.FECHA]?.extra        || 0,
+        DETALLES_EXTRA:      tripsByDay[r.FECHA]?.detalles     || [],
       }));
 
     res.json(data);
