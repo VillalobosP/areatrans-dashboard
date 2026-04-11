@@ -397,8 +397,7 @@ app.get('/api/:centro/facturacion', requireCentroAccess, async (req, res) => {
       }
     });
 
-    // Agrupación por LOTE (Illescas) — usa COSTE_RUTA_NUM directamente
-    // porque CONTADOR_PLANIFICADO/EXTRAS pueden tener formato distinto en Illescas
+    // Agrupación por LOTE (Illescas)
     const byLote = {};
     filtradas.forEach(r => {
       if (!r.LOTE) return;
@@ -407,11 +406,20 @@ app.get('/api/:centro/facturacion', requireCentroAccess, async (req, res) => {
       byLote[r.LOTE].viajes += 1;
     });
 
+    // Facturación por día desglosada por lote (para gráfico apilado)
+    const byDiaLote = {};
+    filtradas.forEach(r => {
+      if (!r.FECHA || !r.LOTE) return;
+      if (!byDiaLote[r.FECHA]) byDiaLote[r.FECHA] = { fecha: r.FECHA };
+      byDiaLote[r.FECHA][`lote_${r.LOTE}`] = (byDiaLote[r.FECHA][`lote_${r.LOTE}`] || 0) + r.COSTE_RUTA_NUM;
+    });
+
     res.json({
       porDia:        Object.values(byFecha).sort((a, b) => a.fecha.localeCompare(b.fecha)),
       porFacturador: Object.values(byFact).sort((a, b) => b.total - a.total),
       porMatricula:  Object.values(byMat).sort((a, b) => b.total - a.total).slice(0, 10),
       porLote:       Object.values(byLote).sort((a, b) => b.total - a.total),
+      porDiaLote:    Object.values(byDiaLote).sort((a, b) => a.fecha.localeCompare(b.fecha)),
     });
   } catch (err) {
     console.error(`Error /api/${req.centro.id}/facturacion:`, err.message);
