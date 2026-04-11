@@ -112,7 +112,7 @@ export default function DashboardFacturacion({ centro }) {
       setResumen(res); setCharts(ch);
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
-  }, [desde, hasta]);
+  }, [centro, desde, hasta]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 

@@ -156,7 +156,7 @@ function DashboardLayout() {
 
 // ── Admin layout (mismo header simplificado) ──────────────────────────────────
 function AdminLayout() {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
   return (
     <div style={{ minHeight: '100vh', background: '#1a1a1a', color: '#fff' }}>

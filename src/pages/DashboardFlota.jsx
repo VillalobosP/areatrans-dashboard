@@ -132,7 +132,7 @@ export default function DashboardFlota({ centro }) {
       setGasoil(g); setKmDev(k);
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
-  }, [desde, hasta]);
+  }, [centro, desde, hasta]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
