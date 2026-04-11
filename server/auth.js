@@ -11,8 +11,8 @@ const JWT_EXPIRES = '8h';
 // Columnas: A=username | B=passwordHash | C=role | D=centros (getafe,illescas)
 const CENTROS        = require('./centros');
 const USERS_SHEET_ID = CENTROS.getafe.sheetId;
-const USERS_TAB      = 'USUARIOS';
-const USERS_RANGE    = `${USERS_TAB}!A:D`;
+const USERS_TAB      = 'USUARIOS DASHBOARD';
+const USERS_RANGE    = `'${USERS_TAB}'!A:D`;
 
 // ── Cliente Google Sheets (scope escritura) ────────────────────────────────────
 const CREDENTIALS_PATH = path.join(__dirname, '..', 'celtic-client-485117-p4-f4378a3f13f0.json');
@@ -84,7 +84,7 @@ async function saveUsers(users) {
   await sheets.spreadsheets.values.clear({ spreadsheetId: USERS_SHEET_ID, range: USERS_RANGE });
   await sheets.spreadsheets.values.update({
     spreadsheetId: USERS_SHEET_ID,
-    range: `${USERS_TAB}!A1`,
+    range: `'${USERS_TAB}'!A1`,
     valueInputOption: 'RAW',
     requestBody: { values: rows },
   });

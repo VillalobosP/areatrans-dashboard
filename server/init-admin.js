@@ -16,7 +16,7 @@ const readline = require('readline');
 
 const CENTROS        = require('./centros');
 const USERS_SHEET_ID = CENTROS.getafe.sheetId;
-const USERS_TAB      = 'USUARIOS';
+const USERS_TAB      = 'USUARIOS DASHBOARD';
 const CREDENTIALS_PATH = path.join(__dirname, '..', 'celtic-client-485117-p4-f4378a3f13f0.json');
 
 async function getSheetsClient() {
@@ -55,7 +55,7 @@ async function main() {
   }
 
   // Leer usuarios existentes y eliminar admin previo
-  const res  = await sheets.spreadsheets.values.get({ spreadsheetId: USERS_SHEET_ID, range: `${USERS_TAB}!A:D` });
+  const res  = await sheets.spreadsheets.values.get({ spreadsheetId: USERS_SHEET_ID, range: `'${USERS_TAB}'!A:D` });
   const rows = (res.data.values || []).slice(1); // sin cabecera
   const others = rows
     .filter(r => r[0] && r[2] !== 'admin')
@@ -69,10 +69,10 @@ async function main() {
     ...others,
   ];
 
-  await sheets.spreadsheets.values.clear({ spreadsheetId: USERS_SHEET_ID, range: `${USERS_TAB}!A:D` });
+  await sheets.spreadsheets.values.clear({ spreadsheetId: USERS_SHEET_ID, range: `'${USERS_TAB}'!A:D` });
   await sheets.spreadsheets.values.update({
     spreadsheetId: USERS_SHEET_ID,
-    range: `${USERS_TAB}!A1`,
+    range: `'${USERS_TAB}'!A1`,
     valueInputOption: 'RAW',
     requestBody: { values: newRows },
   });
