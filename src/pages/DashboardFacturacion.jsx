@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ComposedChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, Cell, ReferenceLine,
+  Tooltip, Legend, ResponsiveContainer, Cell, ReferenceLine, LabelList,
 } from 'recharts';
 import KPICard from '../components/KPICard';
 import { getFacturacion, getFacturacionResumen } from '../services/api';
@@ -93,6 +93,63 @@ const S = {
 
 const COLORS_BAR = ['#4da6ff', '#7ec8ff', '#a8daff', '#1e7fd4', '#0d5fa8', '#4da6ff'];
 
+// ── Popup de notas por matrícula ──────────────────────────────────────────────
+function DetallePopup({ data, onClose }) {
+  if (!data) return null;
+  return (
+    <>
+      {/* Fondo para cerrar al clicar fuera */}
+      <div
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+      />
+      <div style={{
+        position: 'fixed', top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        background: '#1a1a1a', border: '1px solid #3a3a3a',
+        borderRadius: 14, padding: '22px 26px',
+        zIndex: 1000, minWidth: 280, maxWidth: 480,
+        boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
+      }}>
+        {/* Cabecera */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', marginBottom: 3 }}>
+              {data.name}
+            </div>
+            <div style={{ fontSize: 12, color: '#888' }}>
+              {data.viajes} {data.viajes === 1 ? 'viaje' : 'viajes'} · {fmtEur(data.total)}
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', color: '#555',
+            fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: '0 0 0 12px',
+          }}>×</button>
+        </div>
+
+        {/* Notas */}
+        {data.detalles?.length > 0 ? (
+          <div style={{ borderTop: '1px solid #2a2a2a', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {data.detalles.map((nota, i) => (
+              <div key={i} style={{
+                fontSize: 13, color: '#ccc', lineHeight: 1.55,
+                padding: '5px 10px', background: '#222', borderRadius: 7,
+                borderLeft: '3px solid #4da6ff',
+              }}>
+                {nota}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ borderTop: '1px solid #2a2a2a', paddingTop: 14, fontSize: 12, color: '#555', fontStyle: 'italic' }}>
+            Sin notas registradas para esta matrícula en el rango seleccionado.
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 export default function DashboardFacturacion({ centro }) {
   const [desde, setDesde] = useState(primerDiaMes());
   const [hasta, setHasta] = useState(hoy());
@@ -100,6 +157,7 @@ export default function DashboardFacturacion({ centro }) {
   const [charts, setCharts] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [detallePopup, setDetallePopup] = useState(null);
 
   const cargarDatos = useCallback(async () => {
     if (!desde || !hasta || desde > hasta) return;
@@ -155,6 +213,8 @@ export default function DashboardFacturacion({ centro }) {
 
       {error && <div style={S.error}>Error: {error}</div>}
       {loading && <div style={S.loading}>Cargando datos de facturación…</div>}
+
+      <DetallePopup data={detallePopup} onClose={() => setDetallePopup(null)} />
 
       {!loading && resumen && (
         <>
@@ -278,20 +338,46 @@ export default function DashboardFacturacion({ centro }) {
 
             {/* Por matrícula — top 10 descendente */}
             <div className="chart-box" style={{ ...S.chartBox, marginBottom: 0 }}>
-              <div style={S.chartTitle}>Facturación planificada por matrícula · top 10</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={S.chartTitle}>Facturación planificada por matrícula · top 10</div>
+                <div style={{ fontSize: 11, color: '#555' }}>Pulsa una barra para ver notas</div>
+              </div>
               <ResponsiveContainer width="100%" height={220}>
                 <ComposedChart
-                  data={(charts?.porMatricula || []).map(d => ({ name: d.matricula, total: Math.round(d.total) }))}
-                  layout="vertical" margin={{ top: 0, right: 16, left: 70, bottom: 0 }}>
+                  data={(charts?.porMatricula || []).map(d => ({
+                    name: d.matricula,
+                    total: Math.round(d.total),
+                    viajes: d.viajes || 0,
+                    detalles: d.detalles || [],
+                  }))}
+                  layout="vertical" margin={{ top: 0, right: 56, left: 70, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" horizontal={false} />
                   <XAxis type="number" tick={{ fill: '#777', fontSize: 10 }} axisLine={false} tickLine={false}
                     tickFormatter={v => `${Math.round(v / 1000)}k`} />
                   <YAxis type="category" dataKey="name" tick={{ fill: '#aaa', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={v => fmtEur(v)} contentStyle={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8 }} labelStyle={{ color: '#ccc' }} itemStyle={{ color: '#fff' }} />
-                  <Bar dataKey="total" name="Facturación" radius={[0, 4, 4, 0]} maxBarSize={24}>
+                  <Tooltip
+                    formatter={(v, name, props) => [
+                      `${fmtEur(v)}  (${props.payload.viajes} viajes)`,
+                      'Facturación',
+                    ]}
+                    contentStyle={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8 }}
+                    labelStyle={{ color: '#ccc' }} itemStyle={{ color: '#fff' }}
+                  />
+                  <Bar
+                    dataKey="total" name="Facturación"
+                    radius={[0, 4, 4, 0]} maxBarSize={24}
+                    cursor="pointer"
+                    onClick={(data) => setDetallePopup(data)}
+                  >
                     {(charts?.porMatricula || []).map((_, i) => (
                       <Cell key={i} fill={COLORS_BAR[i % COLORS_BAR.length]} />
                     ))}
+                    <LabelList
+                      dataKey="viajes"
+                      position="right"
+                      formatter={v => `${v} v.`}
+                      style={{ fill: '#888', fontSize: 10 }}
+                    />
                   </Bar>
                 </ComposedChart>
               </ResponsiveContainer>

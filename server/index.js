@@ -138,6 +138,7 @@ function buildEnrutRow(headers, row) {
     PRIMERA_FILA_FECHA:      primeraFila,
     FACTURACION_PLANIFICADA: planificado > 0 ? coste_num : 0,
     FACTURACION_EXTRA:       extra > 0 ? coste_num : 0,
+    DETALLE:                 (obj['DETALLE'] || '').trim(),
   };
 }
 
@@ -371,8 +372,13 @@ app.get('/api/:centro/facturacion', requireCentroAccess, async (req, res) => {
     const byMat = {};
     filtradas.forEach(r => {
       if (!r.MATRICULAS) return;
-      if (!byMat[r.MATRICULAS]) byMat[r.MATRICULAS] = { matricula: r.MATRICULAS, total: 0 };
-      byMat[r.MATRICULAS].total += r.FACTURACION_PLANIFICADA + r.FACTURACION_EXTRA;
+      if (!byMat[r.MATRICULAS]) byMat[r.MATRICULAS] = { matricula: r.MATRICULAS, total: 0, viajes: 0, detalles: [] };
+      byMat[r.MATRICULAS].total  += r.FACTURACION_PLANIFICADA + r.FACTURACION_EXTRA;
+      byMat[r.MATRICULAS].viajes += 1;
+      if (r.DETALLE) {
+        const fechaFmt = r.FECHA ? r.FECHA.split('-').reverse().join('/') : '';
+        byMat[r.MATRICULAS].detalles.push(fechaFmt ? `${fechaFmt}: ${r.DETALLE}` : r.DETALLE);
+      }
     });
 
     res.json({
