@@ -370,8 +370,12 @@ app.get('/api/:centro/facturacion', requireCentroAccess, async (req, res) => {
     const byFact = {};
     filtradas.forEach(r => {
       if (!r.FACTURADOR) return;
-      if (!byFact[r.FACTURADOR]) byFact[r.FACTURADOR] = { facturador: r.FACTURADOR, total: 0 };
-      byFact[r.FACTURADOR].total += r.FACTURACION_PLANIFICADA + r.FACTURACION_EXTRA;
+      // Si es autónomo, desglosar por nombre de chofer para distinguir entre varios autónomos
+      const esAutonomo = r.FACTURADOR.toUpperCase().includes('AUTONOMO') ||
+                         r.FACTURADOR.toUpperCase().includes('AUTÓNOMO');
+      const clave = esAutonomo && r.CHOFER ? `Autónomo · ${r.CHOFER}` : r.FACTURADOR;
+      if (!byFact[clave]) byFact[clave] = { facturador: clave, total: 0 };
+      byFact[clave].total += r.FACTURACION_PLANIFICADA + r.FACTURACION_EXTRA;
     });
 
     const byMat = {};
