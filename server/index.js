@@ -101,7 +101,12 @@ function buildEnrutRow(headers, row) {
   const obj = {};
   headers.forEach((h, i) => { obj[h.trim()] = row[i] ?? ''; });
 
-  const fechaRaw = obj['FECHA_REAL'] || obj['FECHA'] || '';
+  // FECHA_REAL puede ser "YYYY-MM-DD" (Getafe) o solo "YYYY-MM" (Illescas → inútil)
+  // Si no tiene día completo, se cae a la columna FECHA que siempre tiene "DD/MM/YYYY"
+  let fechaRaw = obj['FECHA_REAL'] || '';
+  const esCompleta = fechaRaw.includes('-') && fechaRaw.split('-').length === 3;
+  if (!esCompleta) fechaRaw = obj['FECHA'] || '';
+
   let fecha = null;
   if (fechaRaw.includes('/')) {
     const parts = fechaRaw.split('/');
@@ -109,7 +114,7 @@ function buildEnrutRow(headers, row) {
       const [d, m, y] = parts;
       fecha = `${y.padStart(4, '20')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
     }
-  } else if (fechaRaw.includes('-')) {
+  } else if (fechaRaw.includes('-') && fechaRaw.split('-').length === 3) {
     fecha = fechaRaw.trim();
   }
 
@@ -392,12 +397,13 @@ app.get('/api/:centro/facturacion', requireCentroAccess, async (req, res) => {
       }
     });
 
-    // Agrupación por LOTE (Illescas)
+    // Agrupación por LOTE (Illescas) — usa COSTE_RUTA_NUM directamente
+    // porque CONTADOR_PLANIFICADO/EXTRAS pueden tener formato distinto en Illescas
     const byLote = {};
     filtradas.forEach(r => {
       if (!r.LOTE) return;
       if (!byLote[r.LOTE]) byLote[r.LOTE] = { lote: r.LOTE, total: 0, viajes: 0 };
-      byLote[r.LOTE].total  += r.FACTURACION_PLANIFICADA + r.FACTURACION_EXTRA;
+      byLote[r.LOTE].total  += r.COSTE_RUTA_NUM;
       byLote[r.LOTE].viajes += 1;
     });
 
