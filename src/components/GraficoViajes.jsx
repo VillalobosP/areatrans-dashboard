@@ -4,29 +4,20 @@ import {
   CartesianGrid, Tooltip, Legend, LabelList, ResponsiveContainer,
 } from 'recharts';
 
-// Tooltip con fecha completa y valores del día
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload;
   return (
     <div style={{
-      background: '#1e1e1e',
-      border: '1px solid #3a3a3a',
-      borderRadius: 8,
-      padding: '10px 14px',
-      color: '#fff',
-      fontSize: 13,
-      minWidth: 180,
+      background: '#1e1e1e', border: '1px solid #3a3a3a',
+      borderRadius: 8, padding: '10px 14px', color: '#fff', fontSize: 13, minWidth: 180,
     }}>
       <p style={{ margin: '0 0 8px', fontWeight: 700, color: '#ccc', fontSize: 12 }}>
         {fmtFechaCompleta(d?.fecha)}
       </p>
       {payload.map(p => (
         <p key={p.name} style={{ margin: '3px 0', color: p.color }}>
-          {p.name}:{' '}
-          <strong style={{ color: '#fff' }}>
-            {p.value != null ? p.value : '—'}
-          </strong>
+          {p.name}: <strong style={{ color: '#fff' }}>{p.value != null ? p.value : '—'}</strong>
         </p>
       ))}
     </div>
@@ -56,13 +47,12 @@ export default function GraficoViajes({ calendario }) {
     const fecha = row.FECHA || '';
     const [, m, d] = fecha.split('-');
     const meses = ['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-    // Etiqueta corta: "1 abr", "15 abr"
-    const label = `${parseInt(d, 10)} ${meses[parseInt(m, 10)]}`;
     return {
-      label,
+      label:            `${parseInt(d, 10)} ${meses[parseInt(m, 10)]}`,
       fecha,
-      'Viajes reales': row.VIAJES_REALES_DIA || 0,
-      'Cuota mínima':  row.CUOTA_MIN_225_INCL > 0 ? round1(row.CUOTA_MIN_225_INCL) : null,
+      'Planificados':   row.VIAJES_PLANIFICADOS || 0,
+      'Extra':          row.VIAJES_EXTRA        || 0,
+      'Cuota mínima':   row.CUOTA_MIN_225_INCL > 0 ? round1(row.CUOTA_MIN_225_INCL) : null,
       'Cuota objetivo': row.CUOTA_OBJ_250_INCL > 0 ? round1(row.CUOTA_OBJ_250_INCL) : null,
     };
   });
@@ -83,23 +73,31 @@ export default function GraficoViajes({ calendario }) {
           textAnchor={muchos ? 'end' : 'middle'}
           height={muchos ? 50 : 28}
         />
-        <YAxis
-          tick={{ fill: '#777', fontSize: 12 }}
-          axisLine={false}
-          tickLine={false}
-          width={28}
-        />
+        <YAxis tick={{ fill: '#777', fontSize: 12 }} axisLine={false} tickLine={false} width={28} />
         <Tooltip content={<CustomTooltip />} />
         <Legend wrapperStyle={{ color: '#777', fontSize: 13, paddingTop: 10 }} />
 
-        <Bar dataKey="Viajes reales" fill="#4da6ff" radius={[4, 4, 0, 0]} maxBarSize={36}>
+        {/* Barra planificados (base) */}
+        <Bar dataKey="Planificados" stackId="viajes" fill="#4da6ff" radius={[0, 0, 0, 0]} maxBarSize={36}>
           <LabelList
-            dataKey="Viajes reales"
+            dataKey="Planificados"
             position="top"
-            style={{ fill: '#ffffff', fontSize: 11, fontWeight: 700 }}
-            formatter={v => v > 0 ? v : ''}
+            content={({ x, y, width, value, index }) => {
+              // Muestra total (planificados + extra) encima de la barra completa
+              const row = data[index];
+              const total = (row?.['Planificados'] || 0) + (row?.['Extra'] || 0);
+              if (total === 0) return null;
+              return (
+                <text x={x + width / 2} y={y - 4} fill="#ffffff" fontSize={11} fontWeight={700} textAnchor="middle">
+                  {total}
+                </text>
+              );
+            }}
           />
         </Bar>
+
+        {/* Barra extra (apilada encima, naranja) */}
+        <Bar dataKey="Extra" stackId="viajes" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={36} />
 
         <Line
           type="monotone"

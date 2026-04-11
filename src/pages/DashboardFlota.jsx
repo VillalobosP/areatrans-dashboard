@@ -113,7 +113,7 @@ function colorPct(pct) {
   return '#4dcc7a';
 }
 
-export default function DashboardFlota() {
+export default function DashboardFlota({ centro }) {
   const [desde, setDesde] = useState(primerDiaMes());
   const [hasta, setHasta]  = useState(hoy());
   const [gasoil, setGasoil] = useState(null);
@@ -126,8 +126,8 @@ export default function DashboardFlota() {
     setLoading(true); setError(null);
     try {
       const [g, k] = await Promise.all([
-        getGasoilResumen(desde, hasta),
-        getKmDesviacion(desde, hasta),
+        getGasoilResumen(centro, desde, hasta),
+        getKmDesviacion(centro, desde, hasta),
       ]);
       setGasoil(g); setKmDev(k);
     } catch (err) { setError(err.message); }

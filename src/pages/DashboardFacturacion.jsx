@@ -93,7 +93,7 @@ const S = {
 
 const COLORS_BAR = ['#4da6ff', '#7ec8ff', '#a8daff', '#1e7fd4', '#0d5fa8', '#4da6ff'];
 
-export default function DashboardFacturacion() {
+export default function DashboardFacturacion({ centro }) {
   const [desde, setDesde] = useState(primerDiaMes());
   const [hasta, setHasta] = useState(hoy());
   const [resumen, setResumen] = useState(null);
@@ -106,8 +106,8 @@ export default function DashboardFacturacion() {
     setLoading(true); setError(null);
     try {
       const [res, ch] = await Promise.all([
-        getFacturacionResumen(desde, hasta),
-        getFacturacion(desde, hasta),
+        getFacturacionResumen(centro, desde, hasta),
+        getFacturacion(centro, desde, hasta),
       ]);
       setResumen(res); setCharts(ch);
     } catch (err) { setError(err.message); }
@@ -118,9 +118,11 @@ export default function DashboardFacturacion() {
 
   const presets = getPresets();
   const activePreset = presets.find(p => p.desde === desde && p.hasta === hasta)?.label;
-  const r = resumen || {};
+  const r   = resumen || {};
+  const min = r.objetivos?.min ?? 225;
+  const obj = r.objetivos?.obj ?? 250;
 
-  const pStatus = proyeccionStatus(r.proyeccion_cierre_euros, r.obj_min_225, r.obj_media_225);
+  const pStatus = proyeccionStatus(r.proyeccion_cierre_euros, r.obj_min, r.obj_media_min);
 
   // Datos gráfico diario con ritmos de referencia
   const dataDia = (charts?.porDia || []).map(d => {
@@ -161,7 +163,7 @@ export default function DashboardFacturacion() {
             <div style={S.sectionHeader}>Acumulado en el rango — {fmtRango(desde, hasta)}</div>
             <div className="kpi-row">
               <KPICard label="Facturación total" value={fmtEur(r.fact_total)} sub="Planificada + Extra" theme="blue" big borderAccent="#4da6ff" />
-              <KPICard label="Fact. planificada" value={fmtEur(r.fact_planificada)} sub={`${r.num_viajes_planificados ?? '—'} viajes planificados`} theme="white" />
+              <KPICard label="Fact. planificada" value={fmtEur(r.fact_planificada)} sub={`${r.num_viajes_planificados ?? '—'} viajes planif.`} theme="white" />
               <KPICard label="Fact. extra" value={fmtEur(r.fact_extra)} sub={`${r.porcentaje_extra ?? '—'}% del total`} theme="white" />
               <KPICard label="Precio mínimo/viaje" value={fmtEur2(r.precio_minimo)} sub="Viaje más barato del rango" theme="gray" />
               <KPICard label="Precio medio/viaje" value={fmtEur2(r.precio_medio)} sub="Media por viaje planificado" theme="gray" />
@@ -184,10 +186,10 @@ export default function DashboardFacturacion() {
                 theme="blueSoft" big borderAccent="#4fc3f7"
                 statusText={pStatus?.text} statusColor={pStatus?.color}
               />
-              <KPICard label="Objetivo mensual conservador" value={fmtEur(r.obj_min_225)} sub={`225 viajes × ${fmtEur2(r.precio_minimo)}`} theme="gray" />
-              <KPICard label="Objetivo mensual realista" value={fmtEur(r.obj_media_225)} sub={`225 viajes × ${fmtEur2(r.precio_medio)}`} theme="gray" />
-              <KPICard label="Objetivo máximo conservador" value={fmtEur(r.obj_min_250)} sub={`250 viajes × ${fmtEur2(r.precio_minimo)}`} theme="gray" />
-              <KPICard label="Objetivo máximo realista" value={fmtEur(r.obj_media_250)} sub={`250 viajes × ${fmtEur2(r.precio_medio)}`} theme="gray" />
+              <KPICard label={`Obj. conservador ${min}`} value={fmtEur(r.obj_min)} sub={`${min} viajes × ${fmtEur2(r.precio_minimo)}`} theme="gray" />
+              <KPICard label={`Obj. realista ${min}`} value={fmtEur(r.obj_media_min)} sub={`${min} viajes × ${fmtEur2(r.precio_medio)}`} theme="gray" />
+              <KPICard label={`Obj. conservador ${obj}`} value={fmtEur(r.obj_obj)} sub={`${obj} viajes × ${fmtEur2(r.precio_minimo)}`} theme="gray" />
+              <KPICard label={`Obj. realista ${obj}`} value={fmtEur(r.obj_media_obj)} sub={`${obj} viajes × ${fmtEur2(r.precio_medio)}`} theme="gray" />
             </div>
           </div>
 
@@ -195,14 +197,14 @@ export default function DashboardFacturacion() {
           <div style={S.sectionBlock}>
             <div style={S.sectionHeader}>Escenario mensual conservador · precio mínimo por viaje ({fmtEur2(r.precio_minimo)})</div>
             <div className="kpi-row">
-              <KPICard label="Objetivo 225 viajes" value={fmtEur(r.obj_min_225)} sub={`${fmtEur2(r.precio_minimo)} × 225`} theme="gray" />
-              <KPICard label="Objetivo 250 viajes" value={fmtEur(r.obj_min_250)} sub={`${fmtEur2(r.precio_minimo)} × 250`} theme="gray" />
-              <KPICard label="Gap vs escenario mensual 225" value={fmtDesv(r.desv_min_225)}
-                sub="Fact. planificada vs objetivo conservador 225"
-                forceGreen={r.desv_min_225 >= 0} forceRed={r.desv_min_225 < 0} />
-              <KPICard label="Gap vs escenario mensual 250" value={fmtDesv(r.desv_min_250)}
-                sub="Fact. planificada vs objetivo conservador 250"
-                forceGreen={r.desv_min_250 >= 0} forceRed={r.desv_min_250 < 0} />
+              <KPICard label={`Objetivo ${min} viajes`} value={fmtEur(r.obj_min)} sub={`${fmtEur2(r.precio_minimo)} × ${min}`} theme="gray" />
+              <KPICard label={`Objetivo ${obj} viajes`} value={fmtEur(r.obj_obj)} sub={`${fmtEur2(r.precio_minimo)} × ${obj}`} theme="gray" />
+              <KPICard label={`Gap vs ${min} conservador`} value={fmtDesv(r.desv_min)}
+                sub={`Fact. planificada vs objetivo conservador ${min}`}
+                forceGreen={r.desv_min >= 0} forceRed={r.desv_min < 0} />
+              <KPICard label={`Gap vs ${obj} conservador`} value={fmtDesv(r.desv_obj)}
+                sub={`Fact. planificada vs objetivo conservador ${obj}`}
+                forceGreen={r.desv_obj >= 0} forceRed={r.desv_obj < 0} />
             </div>
           </div>
 
@@ -210,14 +212,14 @@ export default function DashboardFacturacion() {
           <div style={S.sectionBlock}>
             <div style={S.sectionHeader}>Escenario mensual realista · precio medio por viaje ({fmtEur2(r.precio_medio)})</div>
             <div className="kpi-row">
-              <KPICard label="Objetivo 225 viajes" value={fmtEur(r.obj_media_225)} sub={`${fmtEur2(r.precio_medio)} × 225`} theme="gray" />
-              <KPICard label="Objetivo 250 viajes" value={fmtEur(r.obj_media_250)} sub={`${fmtEur2(r.precio_medio)} × 250`} theme="gray" />
-              <KPICard label="Gap vs escenario mensual 225" value={fmtDesv(r.desv_media_225)}
-                sub="Fact. planificada vs objetivo realista 225"
-                forceGreen={r.desv_media_225 >= 0} forceRed={r.desv_media_225 < 0} />
-              <KPICard label="Gap vs escenario mensual 250" value={fmtDesv(r.desv_media_250)}
-                sub="Fact. planificada vs objetivo realista 250"
-                forceGreen={r.desv_media_250 >= 0} forceRed={r.desv_media_250 < 0} />
+              <KPICard label={`Objetivo ${min} viajes`} value={fmtEur(r.obj_media_min)} sub={`${fmtEur2(r.precio_medio)} × ${min}`} theme="gray" />
+              <KPICard label={`Objetivo ${obj} viajes`} value={fmtEur(r.obj_media_obj)} sub={`${fmtEur2(r.precio_medio)} × ${obj}`} theme="gray" />
+              <KPICard label={`Gap vs ${min} realista`} value={fmtDesv(r.desv_media_min)}
+                sub={`Fact. planificada vs objetivo realista ${min}`}
+                forceGreen={r.desv_media_min >= 0} forceRed={r.desv_media_min < 0} />
+              <KPICard label={`Gap vs ${obj} realista`} value={fmtDesv(r.desv_media_obj)}
+                sub={`Fact. planificada vs objetivo realista ${obj}`}
+                forceGreen={r.desv_media_obj >= 0} forceRed={r.desv_media_obj < 0} />
             </div>
           </div>
 
@@ -236,13 +238,13 @@ export default function DashboardFacturacion() {
                 <Legend wrapperStyle={{ color: '#777', fontSize: 12, paddingTop: 8 }} />
                 <Bar dataKey="Planificada" stackId="a" fill="#4da6ff" radius={[0, 0, 0, 0]} maxBarSize={44} />
                 <Bar dataKey="Extra" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={44} />
-                {r.ritmo_diario_225 > 0 && (
-                  <ReferenceLine y={r.ritmo_diario_225} stroke="#ff9d4d" strokeDasharray="6 3" strokeWidth={1.5}
-                    label={{ value: 'Ritmo 225', position: 'insideTopRight', fill: '#ff9d4d', fontSize: 10 }} />
+                {r.ritmo_diario_min > 0 && (
+                  <ReferenceLine y={r.ritmo_diario_min} stroke="#ff9d4d" strokeDasharray="6 3" strokeWidth={1.5}
+                    label={{ value: `Ritmo ${min}`, position: 'insideTopRight', fill: '#ff9d4d', fontSize: 10 }} />
                 )}
-                {r.ritmo_diario_250 > 0 && (
-                  <ReferenceLine y={r.ritmo_diario_250} stroke="#b97dff" strokeDasharray="6 3" strokeWidth={1.5}
-                    label={{ value: 'Ritmo 250', position: 'insideTopRight', fill: '#b97dff', fontSize: 10, dy: 14 }} />
+                {r.ritmo_diario_obj > 0 && (
+                  <ReferenceLine y={r.ritmo_diario_obj} stroke="#b97dff" strokeDasharray="6 3" strokeWidth={1.5}
+                    label={{ value: `Ritmo ${obj}`, position: 'insideTopRight', fill: '#b97dff', fontSize: 10, dy: 14 }} />
                 )}
               </ComposedChart>
             </ResponsiveContainer>

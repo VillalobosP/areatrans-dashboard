@@ -26,15 +26,15 @@ function fmtDesv1(n) {
   const v = (Math.round(n * 10) / 10).toFixed(1);
   return n >= 0 ? `+${v}` : v;
 }
-function proyeccionStatus(proy) {
+function proyeccionStatus(proy, min, obj) {
   if (proy === undefined || proy === null) return null;
-  if (proy >= 250) return { text: '✓ Objetivo alcanzado', color: '#4dcc7a' };
-  if (proy >= 225) return { text: '▲ Por encima del mínimo', color: '#4dcc7a' };
+  if (proy >= obj) return { text: '✓ Objetivo alcanzado', color: '#4dcc7a' };
+  if (proy >= min) return { text: '▲ Por encima del mínimo', color: '#4dcc7a' };
   return { text: '▼ Por debajo del mínimo', color: '#ff6b6b' };
 }
-function mediaTrend(media, ritmo225) {
-  if (media === undefined || ritmo225 === undefined || ritmo225 === null) return null;
-  if (media >= ritmo225) return { arrow: '↑', text: 'Por encima del ritmo', color: '#4dcc7a' };
+function mediaTrend(media, ritmo) {
+  if (media === undefined || ritmo === undefined || ritmo === null) return null;
+  if (media >= ritmo) return { arrow: '↑', text: 'Por encima del ritmo', color: '#4dcc7a' };
   return { arrow: '↓', text: 'Por debajo del ritmo', color: '#ff6b6b' };
 }
 function getPresets() {
@@ -43,8 +43,8 @@ function getPresets() {
   const quince = new Date(); quince.setDate(quince.getDate() - 14);
   return [
     { label: 'Esta semana', desde: semAtr.toISOString().slice(0, 10), hasta: h },
-    { label: 'Quincena', desde: quince.toISOString().slice(0, 10), hasta: h },
-    { label: 'Mes actual', desde: p, hasta: h },
+    { label: 'Quincena',    desde: quince.toISOString().slice(0, 10), hasta: h },
+    { label: 'Mes actual',  desde: p, hasta: h },
   ];
 }
 
@@ -78,32 +78,37 @@ const S = {
   loading: { color: '#555', fontSize: 14, padding: '48px 0', textAlign: 'center' },
 };
 
-export default function DashboardRutas() {
-  const [desde, setDesde] = useState(primerDiaMes());
-  const [hasta, setHasta] = useState(hoy());
-  const [resumen, setResumen] = useState(null);
+export default function DashboardRutas({ centro }) {
+  const [desde, setDesde]       = useState(primerDiaMes());
+  const [hasta, setHasta]       = useState(hoy());
+  const [resumen, setResumen]   = useState(null);
   const [calendario, setCalendario] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState(null);
 
   const cargarDatos = useCallback(async () => {
     if (!desde || !hasta || desde > hasta) return;
     setLoading(true); setError(null);
     try {
-      const [res, cal] = await Promise.all([getResumen(desde, hasta), getCalendario(desde, hasta)]);
+      const [res, cal] = await Promise.all([
+        getResumen(centro, desde, hasta),
+        getCalendario(centro, desde, hasta),
+      ]);
       setResumen(res); setCalendario(cal);
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
-  }, [desde, hasta]);
+  }, [centro, desde, hasta]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
-  const presets = getPresets();
+  const presets     = getPresets();
   const activePreset = presets.find(p => p.desde === desde && p.hasta === hasta)?.label;
-  const r = resumen || {};
+  const r           = resumen || {};
+  const min         = r.objetivos?.min ?? 225;
+  const obj         = r.objetivos?.obj ?? 250;
   const proyRedondeada = r.proyeccion_cierre !== undefined ? Math.round(r.proyeccion_cierre) : undefined;
-  const pStatus = proyeccionStatus(proyRedondeada);
-  const mTrend = mediaTrend(r.media_diaria_real, r.ritmo_necesario_225);
+  const pStatus     = proyeccionStatus(proyRedondeada, min, obj);
+  const mTrend      = mediaTrend(r.media_diaria_real, r.ritmo_necesario_min);
 
   return (
     <div className="page-root" style={S.root}>
@@ -128,53 +133,88 @@ export default function DashboardRutas() {
 
       {!loading && resumen && (
         <>
+          {/* ── BLOQUE A: Acumulado en el rango ── */}
           <div style={S.sectionBlock}>
             <div style={S.sectionHeader}>Acumulado en el rango seleccionado</div>
             <div className="kpi-row">
-              <KPICard label="Viajes reales" value={r.viajes_reales ?? '—'} sub={fmtRango(desde, hasta)} theme="blue" />
-              <KPICard label="Objetivo a fecha mín." value={fmt1(r.objetivo_fecha_min)} sub="Cuota 225 acumulada" theme="white" />
-              <KPICard label="Objetivo a fecha" value={fmt1(r.objetivo_fecha_obj)} sub="Cuota 250 acumulada" theme="white" />
-              <KPICard label="Desv. vs mínimo" value={fmtDesv1(r.desv_fecha_min)} sub="vs cuota 225 del rango"
+              <KPICard
+                label="Viajes planificados"
+                value={r.viajes_planificados ?? '—'}
+                sub={fmtRango(desde, hasta)}
+                theme="blue"
+              />
+              <KPICard
+                label="Viajes extra"
+                value={r.viajes_extra ?? '—'}
+                sub="No computan para el objetivo"
+                theme="white"
+              />
+              <KPICard label={`Objetivo a fecha (${min})`} value={fmt1(r.objetivo_fecha_min)} sub={`Cuota ${min} acumulada`} theme="white" />
+              <KPICard label={`Objetivo a fecha (${obj})`} value={fmt1(r.objetivo_fecha_obj)} sub={`Cuota ${obj} acumulada`} theme="white" />
+              <KPICard label={`Desv. vs ${min}`} value={fmtDesv1(r.desv_fecha_min)} sub={`vs cuota ${min} del rango`}
                 forceRed={r.desv_fecha_min < 0} forceGreen={r.desv_fecha_min >= 0} />
-              <KPICard label="Desv. vs objetivo" value={fmtDesv1(r.desv_fecha_obj)} sub="vs cuota 250 del rango"
+              <KPICard label={`Desv. vs ${obj}`} value={fmtDesv1(r.desv_fecha_obj)} sub={`vs cuota ${obj} del rango`}
                 forceRed={r.desv_fecha_obj < 0} forceGreen={r.desv_fecha_obj >= 0} />
             </div>
           </div>
 
+          {/* ── BLOQUE B: Proyección cierre de mes ── */}
           <div style={S.sectionBlock}>
             <div style={S.sectionHeader}>Proyección cierre de mes</div>
             <div className="kpi-row">
-              <KPICard label="Objetivo mensual 225" value="225" sub="Meta mínima del mes" theme="gray" />
-              <KPICard label="Objetivo mensual 250" value="250" sub="Meta objetivo del mes" theme="gray" />
-              <KPICard label="Restantes para 225" value={r.faltan_225 !== undefined ? Math.ceil(r.faltan_225) : '—'}
+              <KPICard label={`Objetivo mensual ${min}`} value={min} sub="Meta mínima del mes" theme="gray" />
+              <KPICard label={`Objetivo mensual ${obj}`} value={obj} sub="Meta objetivo del mes" theme="gray" />
+              <KPICard
+                label={`Restantes para ${min}`}
+                value={r.faltan_min !== undefined ? Math.ceil(r.faltan_min) : '—'}
                 sub={`${r.dias_operativos_restantes ?? '—'} días op. restantes`}
-                forceRed={r.faltan_225 > 0} forceGreen={r.faltan_225 === 0} />
-              <KPICard label="Restantes para 250" value={r.faltan_250 !== undefined ? Math.ceil(r.faltan_250) : '—'}
+                forceRed={r.faltan_min > 0} forceGreen={r.faltan_min === 0}
+              />
+              <KPICard
+                label={`Restantes para ${obj}`}
+                value={r.faltan_obj !== undefined ? Math.ceil(r.faltan_obj) : '—'}
                 sub={`${r.dias_operativos_restantes ?? '—'} días op. restantes`}
-                forceRed={r.faltan_250 > 0} forceGreen={r.faltan_250 === 0} />
-              <KPICard label="Proyección cierre" value={proyRedondeada ?? '—'} sub="A ritmo actual"
+                forceRed={r.faltan_obj > 0} forceGreen={r.faltan_obj === 0}
+              />
+              <KPICard
+                label="Proyección cierre"
+                value={proyRedondeada ?? '—'}
+                sub="A ritmo actual"
                 theme="blueSoft" big borderAccent="#4fc3f7"
-                statusText={pStatus?.text} statusColor={pStatus?.color} />
+                statusText={pStatus?.text} statusColor={pStatus?.color}
+              />
             </div>
           </div>
 
+          {/* ── BLOQUE C: Ritmo ── */}
           <div style={S.sectionBlock}>
             <div style={S.sectionHeader}>Ritmo</div>
             <div className="kpi-row">
-              <KPICard label="Media diaria real" value={fmt1(r.media_diaria_real)} sub="Viajes/día en el rango" theme="white" trend={mTrend} />
-              <KPICard label="Ritmo necesario (225)" value={r.ritmo_necesario_225 !== null ? fmt1(r.ritmo_necesario_225) : '✓'}
-                sub="Viajes/día para cubrir mínimo" theme="white" forceRed={r.ritmo_necesario_225 > r.media_diaria_real} />
-              <KPICard label="Ritmo necesario (250)" value={r.ritmo_necesario_250 !== null ? fmt1(r.ritmo_necesario_250) : '✓'}
-                sub="Viajes/día para cubrir objetivo" theme="white" forceRed={r.ritmo_necesario_250 > r.media_diaria_real} />
+              <KPICard label="Media diaria real" value={fmt1(r.media_diaria_real)} sub="Viajes planificados/día" theme="white" trend={mTrend} />
+              <KPICard
+                label={`Ritmo necesario (${min})`}
+                value={r.ritmo_necesario_min !== null ? fmt1(r.ritmo_necesario_min) : '✓'}
+                sub={`Viajes/día para cubrir ${min}`}
+                theme="white"
+                forceRed={r.ritmo_necesario_min > r.media_diaria_real}
+              />
+              <KPICard
+                label={`Ritmo necesario (${obj})`}
+                value={r.ritmo_necesario_obj !== null ? fmt1(r.ritmo_necesario_obj) : '✓'}
+                sub={`Viajes/día para cubrir ${obj}`}
+                theme="white"
+                forceRed={r.ritmo_necesario_obj > r.media_diaria_real}
+              />
               <div style={{ flex: 2 }} />
             </div>
           </div>
 
+          {/* ── GRÁFICO ── */}
           <div className="chart-box" style={S.chartBox}>
             <div style={S.chartTitle}>Viajes por día operativo — {fmtRango(desde, hasta)}</div>
             <GraficoViajes calendario={calendario} />
             <div style={S.chartLegend}>
-              Barras azules: viajes reales · Naranja: cuota mínima diaria · Morada: cuota objetivo diaria
+              Barras azules: viajes planificados · Naranja: viajes extra · Línea naranja: cuota mínima diaria · Línea morada: cuota objetivo
             </div>
           </div>
         </>

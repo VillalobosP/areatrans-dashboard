@@ -33,3 +33,6 @@ yarn-error.log*
 
 # Backend node_modules
 /server/node_modules
+
+# Logs
+server/server.log
