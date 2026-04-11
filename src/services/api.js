@@ -55,6 +55,12 @@ export async function getGasoilResumen(centro, desde, hasta) {
   return data;
 }
 
+export async function getHoras(centro, desde, hasta) {
+  const { data } = await api.get(`/api/${centro}/horas`, { params: { desde, hasta } })
+    .catch(err => handleError(err, 'Error al cargar horas'));
+  return data;
+}
+
 export async function getKmDesviacion(centro, desde, hasta) {
   const { data } = await api.get(`/api/${centro}/km-desviacion`, { params: { desde, hasta } })
     .catch(err => handleError(err, 'Error al cargar desviación km'));

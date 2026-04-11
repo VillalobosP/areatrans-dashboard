@@ -13,6 +13,7 @@ const CENTROS = {
       enrutamiento: 'PRUEBA ENRUTAMIENTO AUTOMATICO GETAFE',
       calendario:   'CALENDARIO',
       gasoil:       'GASOIL',
+      horas:        'HORAS TRABAJADORES GETAFE',
     },
     objetivos: { min: 225, obj: 250 },
   },

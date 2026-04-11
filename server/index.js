@@ -649,6 +649,118 @@ app.get('/api/:centro/km-desviacion', requireCentroAccess, async (req, res) => {
   }
 });
 
+// ── GET /api/:centro/horas ────────────────────────────────────────────────────
+// Analiza fichajes (E/S) y calcula horas trabajadas por empleado y día
+app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
+  if (!req.centro.sheets.horas) return res.json({ empleados: [], dias: [], data: {} });
+  try {
+    const { desde, hasta } = req.query;
+
+    // Leer hoja (sin cache agresivo — datos que cambian a diario)
+    const raw  = await fetchSheet(req.centro.sheetId, `'${req.centro.sheets.horas}'!A:J`);
+    if (!raw.length) return res.json({ empleados: [], dias: [], data: {} });
+
+    const headers = raw[0].map(h => h.trim());
+    const rows    = raw.slice(1);
+
+    // Parsear fecha DD-MM-YYYY → YYYY-MM-DD
+    function parseFecha(v) {
+      if (!v) return null;
+      const s = String(v).trim();
+      if (s.includes('-') && s.split('-')[2]?.length === 4) {
+        const [d, m, y] = s.split('-');
+        return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+      }
+      if (s.includes('/')) {
+        const [d, m, y] = s.split('/');
+        return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+      }
+      return s; // ya YYYY-MM-DD
+    }
+    // HH:MM:SS → minutos desde medianoche
+    function horaToMin(v) {
+      if (!v) return null;
+      const parts = String(v).trim().split(':');
+      return parseInt(parts[0],10)*60 + parseInt(parts[1]||0,10) + (parseInt(parts[2]||0,10)/60);
+    }
+
+    const idx = k => headers.indexOf(k);
+    const iEmpleado   = idx('EMPLEADO');
+    const iFecha      = idx('FECHA');
+    const iHora       = idx('HORA');
+    const iES         = idx('E/S');
+    const iIncidencia = idx('INCIDENCIA');
+
+    // Agrupar por empleado+fecha
+    const grupos = {};
+    rows.forEach(row => {
+      const empleado   = (row[iEmpleado]   || '').trim();
+      const fechaRaw   = (row[iFecha]      || '').trim();
+      const hora       = (row[iHora]       || '').trim();
+      const es         = (row[iES]         || '').trim().toUpperCase();
+      const incidencia = (row[iIncidencia] || '').trim();
+
+      if (!empleado || !fechaRaw || !hora || !es) return;
+      const fecha = parseFecha(fechaRaw);
+      if (!fecha) return;
+      if (desde && fecha < desde) return;
+      if (hasta && fecha > hasta) return;
+
+      const key = `${empleado}||${fecha}`;
+      if (!grupos[key]) grupos[key] = { empleado, fecha, eventos: [], incidencias: [] };
+      grupos[key].eventos.push({ hora, min: horaToMin(hora), es });
+      if (incidencia) grupos[key].incidencias.push(incidencia);
+    });
+
+    // Calcular horas por grupo emparejando E → S en orden cronológico
+    const result = {};
+    const diasSet = new Set();
+    const empleadosSet = new Set();
+
+    Object.values(grupos).forEach(({ empleado, fecha, eventos, incidencias }) => {
+      diasSet.add(fecha);
+      empleadosSet.add(empleado);
+
+      // Separar y ordenar
+      const entradas = eventos.filter(e => e.es === 'E').sort((a,b) => a.min - b.min);
+      const salidas  = eventos.filter(e => e.es === 'S').sort((a,b) => a.min - b.min);
+
+      const pares = [];
+      const flags = [];
+      const n     = Math.min(entradas.length, salidas.length);
+
+      for (let i = 0; i < n; i++) {
+        const e = entradas[i], s = salidas[i];
+        const horas = s.min > e.min ? (s.min - e.min) / 60 : null;
+        pares.push({ entrada: e.hora, salida: s.hora, horas: horas != null ? Math.round(horas*100)/100 : null });
+      }
+      // Entradas sin salida
+      for (let i = n; i < entradas.length; i++) flags.push({ tipo: 'sin_salida', hora: entradas[i].hora });
+      // Salidas sin entrada
+      for (let i = n; i < salidas.length; i++) flags.push({ tipo: 'sin_entrada', hora: salidas[i].hora });
+
+      const totalHoras = pares.reduce((s, p) => s + (p.horas || 0), 0);
+
+      if (!result[empleado]) result[empleado] = {};
+      result[empleado][fecha] = {
+        horas:      Math.round(totalHoras * 100) / 100,
+        completo:   flags.length === 0 && pares.length > 0,
+        pares,
+        flags,
+        incidencias,
+      };
+    });
+
+    const dias      = [...diasSet].sort();
+    const empleados = [...empleadosSet].sort();
+
+    res.json({ empleados, dias, data: result });
+  } catch (err) {
+    console.error(`Error /api/${req.centro.id}/horas:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
