@@ -14,6 +14,8 @@ const CENTROS = {
       calendario:   'CALENDARIO',
       gasoil:       'GASOIL',
       horas:        'HORAS TRABAJADORES GETAFE',
+      plantilla:    'PLANTILLA GETAFE',
+      incidencias:  'INCIDENCIAS GETAFE',
     },
     objetivos: { min: 225, obj: 250 },
   },

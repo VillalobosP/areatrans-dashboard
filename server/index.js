@@ -650,20 +650,13 @@ app.get('/api/:centro/km-desviacion', requireCentroAccess, async (req, res) => {
 });
 
 // ── GET /api/:centro/horas ────────────────────────────────────────────────────
-// Analiza fichajes (E/S) y calcula horas trabajadas por empleado y día
 app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
-  if (!req.centro.sheets.horas) return res.json({ empleados: [], dias: [], data: {} });
+  if (!req.centro.sheets.horas) return res.json({ empleados: [], dias: [], data: {}, plantilla: {}, incidencias: [] });
   try {
     const { desde, hasta } = req.query;
+    const hoy = new Date().toISOString().slice(0, 10);
 
-    // Leer hoja (sin cache agresivo — datos que cambian a diario)
-    const raw  = await fetchSheet(req.centro.sheetId, `'${req.centro.sheets.horas}'!A:J`);
-    if (!raw.length) return res.json({ empleados: [], dias: [], data: {} });
-
-    const headers = raw[0].map(h => h.trim());
-    const rows    = raw.slice(1);
-
-    // Parsear fecha DD-MM-YYYY → YYYY-MM-DD
+    // ── Helpers locales ──────────────────────────────────────────────────────
     function parseFecha(v) {
       if (!v) return null;
       const s = String(v).trim();
@@ -672,28 +665,90 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
         return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
       }
       if (s.includes('/')) {
-        const [d, m, y] = s.split('/');
-        return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+        const parts = s.split('/');
+        if (parts[2]?.length === 4) {
+          const [d, m, y] = parts;
+          return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+        }
       }
-      return s; // ya YYYY-MM-DD
+      return s.length === 10 ? s : null;
     }
-    // HH:MM:SS → minutos desde medianoche
     function horaToMin(v) {
       if (!v) return null;
       const parts = String(v).trim().split(':');
       return parseInt(parts[0],10)*60 + parseInt(parts[1]||0,10) + (parseInt(parts[2]||0,10)/60);
     }
+    // Día de la semana (0=Dom,1=Lun...6=Sáb) → clave L,M,X,J,V,S,D
+    const DOW_KEY = ['D','L','M','X','J','V','S'];
 
-    const idx = k => headers.indexOf(k);
-    const iEmpleado   = idx('EMPLEADO');
-    const iFecha      = idx('FECHA');
-    const iHora       = idx('HORA');
-    const iES         = idx('E/S');
-    const iIncidencia = idx('INCIDENCIA');
+    // ── 1. Leer PLANTILLA ────────────────────────────────────────────────────
+    const plantillaMap = {}; // empleado → { diasSemana: Set, horasDia: number }
+    if (req.centro.sheets.plantilla) {
+      try {
+        const rawP = await fetchSheet(req.centro.sheetId, `'${req.centro.sheets.plantilla}'!A:E`);
+        if (rawP.length > 1) {
+          rawP.slice(1).forEach(row => {
+            const emp  = (row[0] || '').trim();
+            const dias = (row[1] || '').trim().split(',').map(d => d.trim().toUpperCase()).filter(Boolean);
+            const hd   = parseFloat(row[2]) || 8;
+            if (emp) plantillaMap[emp] = { diasSemana: new Set(dias), horasDia: hd };
+          });
+        }
+      } catch(e) { console.warn('[horas] No se pudo leer PLANTILLA:', e.message); }
+    }
 
-    // Agrupar por empleado+fecha
+    // ── 2. Leer INCIDENCIAS ──────────────────────────────────────────────────
+    // Cada incidencia: { empleado, tipo, inicio, fin (null=activa), obs }
+    const incidenciasList = [];
+    if (req.centro.sheets.incidencias) {
+      try {
+        const rawI = await fetchSheet(req.centro.sheetId, `'${req.centro.sheets.incidencias}'!A:E`);
+        if (rawI.length > 1) {
+          rawI.slice(1).forEach(row => {
+            const emp   = (row[0] || '').trim();
+            const tipo  = (row[1] || '').trim().toLowerCase();
+            const ini   = parseFecha(row[2]);
+            const fin   = parseFecha(row[3]) || null; // null = activa hoy
+            const obs   = (row[4] || '').trim();
+            if (emp && tipo && ini) incidenciasList.push({ empleado: emp, tipo, inicio: ini, fin, obs });
+          });
+        }
+      } catch(e) { console.warn('[horas] No se pudo leer INCIDENCIAS:', e.message); }
+    }
+    // Helper: ¿está el empleado en incidencia en una fecha concreta?
+    function getIncidencia(empleado, fecha) {
+      return incidenciasList.find(inc =>
+        inc.empleado === empleado &&
+        fecha >= inc.inicio &&
+        fecha <= (inc.fin || hoy)
+      ) || null;
+    }
+
+    // ── 3. Leer FESTIVOS del CALENDARIO ─────────────────────────────────────
+    const festivosSet = new Set();
+    if (req.centro.sheets.calendario) {
+      try {
+        const calRows = await getCalendarioRows(req.centro);
+        calRows.forEach(r => {
+          if (r.ES_FESTIVO_FLAG === '1' || r.ES_FESTIVO_FLAG === 1) festivosSet.add(r.FECHA);
+        });
+      } catch(e) { console.warn('[horas] No se pudo leer CALENDARIO:', e.message); }
+    }
+
+    // ── 4. Leer FICHAJES ─────────────────────────────────────────────────────
+    const raw     = await fetchSheet(req.centro.sheetId, `'${req.centro.sheets.horas}'!A:J`);
+    if (!raw.length) return res.json({ empleados: [], dias: [], data: {}, plantilla: plantillaMap, incidencias: incidenciasList });
+
+    const headers      = raw[0].map(h => h.trim());
+    const idx          = k => headers.indexOf(k);
+    const iEmpleado    = idx('EMPLEADO');
+    const iFecha       = idx('FECHA');
+    const iHora        = idx('HORA');
+    const iES          = idx('E/S');
+    const iIncidencia  = idx('INCIDENCIA');
+
     const grupos = {};
-    rows.forEach(row => {
+    raw.slice(1).forEach(row => {
       const empleado   = (row[iEmpleado]   || '').trim();
       const fechaRaw   = (row[iFecha]      || '').trim();
       const hora       = (row[iHora]       || '').trim();
@@ -712,49 +767,98 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
       if (incidencia) grupos[key].incidencias.push(incidencia);
     });
 
-    // Calcular horas por grupo emparejando E → S en orden cronológico
-    const result = {};
-    const diasSet = new Set();
+    // ── 5. Calcular horas por grupo ──────────────────────────────────────────
+    const result      = {};
+    const diasSet     = new Set();
     const empleadosSet = new Set();
+
+    // Añadir empleados de plantilla aunque no tengan fichajes en el rango
+    Object.keys(plantillaMap).forEach(emp => empleadosSet.add(emp));
 
     Object.values(grupos).forEach(({ empleado, fecha, eventos, incidencias }) => {
       diasSet.add(fecha);
       empleadosSet.add(empleado);
 
-      // Separar y ordenar
       const entradas = eventos.filter(e => e.es === 'E').sort((a,b) => a.min - b.min);
       const salidas  = eventos.filter(e => e.es === 'S').sort((a,b) => a.min - b.min);
 
-      const pares = [];
-      const flags = [];
-      const n     = Math.min(entradas.length, salidas.length);
-
+      const pares = [], flags = [];
+      const n = Math.min(entradas.length, salidas.length);
       for (let i = 0; i < n; i++) {
         const e = entradas[i], s = salidas[i];
         const horas = s.min > e.min ? (s.min - e.min) / 60 : null;
         pares.push({ entrada: e.hora, salida: s.hora, horas: horas != null ? Math.round(horas*100)/100 : null });
       }
-      // Entradas sin salida
-      for (let i = n; i < entradas.length; i++) flags.push({ tipo: 'sin_salida', hora: entradas[i].hora });
-      // Salidas sin entrada
-      for (let i = n; i < salidas.length; i++) flags.push({ tipo: 'sin_entrada', hora: salidas[i].hora });
+      for (let i = n; i < entradas.length; i++) flags.push({ tipo: 'sin_salida',  hora: entradas[i].hora });
+      for (let i = n; i < salidas.length;  i++) flags.push({ tipo: 'sin_entrada', hora: salidas[i].hora  });
 
       const totalHoras = pares.reduce((s, p) => s + (p.horas || 0), 0);
+      const plantilla  = plantillaMap[empleado];
+      const dowKey     = DOW_KEY[new Date(fecha + 'T12:00:00').getDay()];
+      const esDiaSuyo  = plantilla?.diasSemana.has(dowKey) ?? true;
 
       if (!result[empleado]) result[empleado] = {};
       result[empleado][fecha] = {
-        horas:      Math.round(totalHoras * 100) / 100,
-        completo:   flags.length === 0 && pares.length > 0,
-        pares,
-        flags,
-        incidencias,
+        horas:    Math.round(totalHoras * 100) / 100,
+        completo: flags.length === 0 && pares.length > 0,
+        esExtra:  !esDiaSuyo,  // fichó en día que no le toca
+        pares, flags, incidencias,
       };
+    });
+
+    // ── 6. Generar días esperados (ausencias y festivos) ─────────────────────
+    // Para cada empleado de plantilla, recorrer el rango y marcar días que tocan
+    if (desde && hasta) {
+      const d0 = new Date(desde + 'T12:00:00');
+      const d1 = new Date(hasta  + 'T12:00:00');
+      for (const emp of Object.keys(plantillaMap)) {
+        const p = plantillaMap[emp];
+        for (let d = new Date(d0); d <= d1; d.setDate(d.getDate() + 1)) {
+          const fecha  = d.toISOString().slice(0,10);
+          const dowKey = DOW_KEY[d.getDay()];
+          const debeTrabajar = p.diasSemana.has(dowKey);
+          if (!debeTrabajar) continue; // no es su día — no generar celda vacía
+
+          diasSet.add(fecha);
+          if (!result[emp]) result[emp] = {};
+          if (result[emp][fecha]) continue; // ya tiene fichaje
+
+          const inc     = getIncidencia(emp, fecha);
+          const festivo = festivosSet.has(fecha);
+
+          result[emp][fecha] = {
+            horas:     0,
+            completo:  false,
+            esExtra:   false,
+            pares:     [],
+            flags:     [],
+            incidencias: [],
+            // Estado especial — no hay fichaje
+            estadoEspecial: inc    ? inc.tipo   :  // baja, vacaciones, permiso...
+                            festivo ? 'festivo'  :
+                            fecha > hoy ? 'futuro' :
+                            'ausente',
+            incidenciaObs: inc?.obs || null,
+          };
+        }
+      }
+    }
+
+    // ── 7. Estadísticas de incidencias por empleado ──────────────────────────
+    const statsIncidencias = {};
+    incidenciasList.forEach(inc => {
+      if (!statsIncidencias[inc.empleado]) statsIncidencias[inc.empleado] = {};
+      if (!statsIncidencias[inc.empleado][inc.tipo]) statsIncidencias[inc.empleado][inc.tipo] = { episodios: 0, dias: 0 };
+      const finReal = inc.fin || hoy;
+      const dias = Math.round((new Date(finReal) - new Date(inc.inicio)) / 86400000) + 1;
+      statsIncidencias[inc.empleado][inc.tipo].episodios++;
+      statsIncidencias[inc.empleado][inc.tipo].dias += dias;
     });
 
     const dias      = [...diasSet].sort();
     const empleados = [...empleadosSet].sort();
 
-    res.json({ empleados, dias, data: result });
+    res.json({ empleados, dias, data: result, plantilla: plantillaMap, statsIncidencias });
   } catch (err) {
     console.error(`Error /api/${req.centro.id}/horas:`, err.message);
     res.status(500).json({ error: err.message });
