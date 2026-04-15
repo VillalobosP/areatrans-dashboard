@@ -858,6 +858,18 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
     if (desde && hasta) {
       const d0 = new Date(desde + 'T12:00:00');
       const d1 = new Date(hasta  + 'T12:00:00');
+
+      // Pre-popular diasSet con todos los días que algún empleado de plantilla
+      // debería trabajar — necesario para detectar libranzas correctamente
+      // independientemente del orden de procesamiento de empleados.
+      for (let d = new Date(d0); d <= d1; d.setDate(d.getDate() + 1)) {
+        const fecha  = d.toISOString().slice(0,10);
+        const dowKey = DOW_KEY[d.getDay()];
+        if (Object.values(plantillaMap).some(p => p.diasSemana.has(dowKey))) {
+          diasSet.add(fecha);
+        }
+      }
+
       for (const emp of Object.keys(plantillaMap)) {
         const p = plantillaMap[emp];
         for (let d = new Date(d0); d <= d1; d.setDate(d.getDate() + 1)) {
@@ -865,7 +877,7 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
           const dowKey = DOW_KEY[d.getDay()];
           const debeTrabajar = p.diasSemana.has(dowKey);
           if (!debeTrabajar) {
-            // Si el día ya está en el grid (otro empleado fichó), marcar libranza
+            // Si el día está en el grid (algún empleado trabaja ese día), marcar libranza
             if (diasSet.has(fecha) && (!result[emp] || !result[emp][fecha])) {
               if (!result[emp]) result[emp] = {};
               const festivo = festivosSet.has(fecha);
