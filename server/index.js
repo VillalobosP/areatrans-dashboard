@@ -777,8 +777,8 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
 
       const key = `${empleado}||${fecha}`;
       if (!grupos[key]) grupos[key] = { empleado, fecha, eventos: [], incidencias: [] };
-      grupos[key].eventos.push({ hora, min: horaToMin(hora), es });
-      if (incidencia) grupos[key].incidencias.push(incidencia);
+      grupos[key].eventos.push({ hora, min: horaToMin(hora), es, inc: incidencia.toLowerCase().trim() });
+      if (incidencia && incidencia.toLowerCase().trim() !== 'comida') grupos[key].incidencias.push(incidencia);
     });
 
     // ── 5. Calcular horas por grupo ──────────────────────────────────────────
@@ -807,6 +807,35 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
       for (let i = n; i < salidas.length;  i++) flags.push({ tipo: 'sin_entrada', hora: salidas[i].hora  });
 
       const totalHoras  = pares.reduce((s, p) => s + (p.horas || 0), 0);
+
+      // ── Detección descanso de comida (Art. 34.4 ET: 15 min si jornada > 6h) ──
+      const comidasS = eventos.filter(e => e.inc === 'comida' && e.es === 'S').sort((a,b) => a.min - b.min);
+      const comidasE = eventos.filter(e => e.inc === 'comida' && e.es === 'E').sort((a,b) => a.min - b.min);
+      let descanso = null;
+      if (totalHoras * 60 >= 360) {
+        // Jornada >= 6h: descanso obligatorio
+        if (comidasS.length === 0) {
+          descanso = { flag: 'sin_descanso', duracion: null, inicio: null, fin: null };
+        } else if (comidasE.length === 0) {
+          descanso = { flag: 'descanso_incompleto', duracion: null, inicio: comidasS[0].hora, fin: null };
+        } else {
+          const durMin = comidasE[0].min - comidasS[0].min;
+          // tardío: si la salida a comer es después de 6h acumuladas desde la primera entrada
+          const primerEntrada = entradas[0]?.min ?? 0;
+          const minutosHastaComida = comidasS[0].min - primerEntrada;
+          let flag;
+          if (durMin < 15)        flag = 'descanso_corto';
+          else if (minutosHastaComida >= 360) flag = 'descanso_tardio';
+          else                    flag = 'ok';
+          descanso = { flag, duracion: durMin, inicio: comidasS[0].hora, fin: comidasE[0].hora };
+        }
+      } else if (comidasS.length > 0 || comidasE.length > 0) {
+        // Jornada < 6h pero hay registro de comida
+        const durMin = (comidasS.length > 0 && comidasE.length > 0)
+          ? comidasE[0].min - comidasS[0].min : null;
+        descanso = { flag: 'no_requerido', duracion: durMin, inicio: comidasS[0]?.hora || null, fin: comidasE[0]?.hora || null };
+      }
+
       const plantilla   = plantillaMap[empleado];
       const dowKey      = DOW_KEY[new Date(fecha + 'T12:00:00').getDay()];
       const esDiaSuyo   = plantilla?.diasSemana.has(dowKey) ?? true;
@@ -820,7 +849,7 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
         completo: flags.length === 0 && pares.length > 0,
         esExtra,
         esFestivo,   // para mostrar "🎉 EXTRA" en lugar de solo "EXTRA"
-        pares, flags, incidencias,
+        pares, flags, incidencias, descanso,
       };
     });
 
