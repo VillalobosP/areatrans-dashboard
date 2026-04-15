@@ -1,10 +1,134 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import KPICard from '../components/KPICard';
 import { getGasoilResumen, getKmDesviacion } from '../services/api';
+
+const API = process.env.REACT_APP_API_URL || '';
+
+// ── Resumen Flota WeMob ───────────────────────────────────────────────────────
+function fmtMin(s) {
+  if (!s) return '—';
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function ResumenFlotaWemob({ centro }) {
+  const [data,    setData]    = useState(null);
+  const [error,   setError]   = useState(null);
+  const [loading, setLoading] = useState(true);
+  const token = localStorage.getItem('token');
+
+  useEffect(() => {
+    axios.get(`${API}/api/${centro}/flota-wemob`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => { setData(r.data); setError(null); })
+      .catch(e => setError(e.response?.data?.error || e.message))
+      .finally(() => setLoading(false));
+  }, [centro, token]);
+
+  if (loading) return null; // carga silenciosa, no bloquea el resto
+  if (error)   return (
+    <div style={{ background: '#1a1000', border: '1px solid #4a3000', borderRadius: 8,
+                  padding: '10px 16px', marginBottom: 20, fontSize: 12, color: '#886622' }}>
+      WeMob no disponible (activación pendiente): {error}
+    </div>
+  );
+  if (!data?.vehicles?.length) return null;
+
+  const vs = data.vehicles;
+  const totalKm     = vs.reduce((s, v) => s + (v.km || 0), 0);
+  const totalParadas = vs.reduce((s, v) => s + (v.resumen?.numStops || 0), 0);
+  const enRuta      = vs.filter(v => v.speed > 0).length;
+  const alertas     = vs.filter(v => v.pendingSpeedAlm > 0 || v.pendingSOSAlm > 0).length;
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      {/* Cabecera */}
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#555', letterSpacing: '0.1em',
+                    textTransform: 'uppercase', marginBottom: 10, borderLeft: '3px solid #333', paddingLeft: 8,
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Resumen del día · Flota GPS (WeMob)</span>
+        <span style={{ fontWeight: 400, color: '#444' }}>
+          {new Date(data.ts).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
+
+      {/* KPIs rápidos */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Vehículos',    value: vs.length,                color: '#60a5fa' },
+          { label: 'En ruta ahora', value: enRuta,                  color: '#22c55e' },
+          { label: 'Km hoy (total)', value: totalKm.toLocaleString('es-ES') + ' km', color: '#a78bfa' },
+          { label: 'Paradas hoy', value: totalParadas,              color: '#f59e0b' },
+          { label: 'Alertas',      value: alertas,                  color: alertas > 0 ? '#ef4444' : '#444' },
+        ].map(k => (
+          <div key={k.label} style={{ background: '#111', border: '1px solid #222', borderRadius: 8,
+                                      padding: '10px 16px', flex: '1 1 120px', minWidth: 110 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: k.color }}>{k.value}</div>
+            <div style={{ fontSize: 10, color: '#555', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabla de vehículos */}
+      <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 10, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: '#0d0d0d' }}>
+              {['Vehículo', 'Conductor', 'Estado', 'Km hoy', 'Vel. actual', 'Vel. media', 'Vel. máx', 'Paradas', 'Tiempo ruta', 'Combustible'].map(h => (
+                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700,
+                                     color: '#444', textTransform: 'uppercase', letterSpacing: '0.05em',
+                                     borderBottom: '1px solid #222', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {vs.map(v => {
+              const r = v.resumen;
+              const alerta = v.pendingSpeedAlm > 0 || v.pendingSOSAlm > 0;
+              return (
+                <tr key={v.idMobile} style={{ borderBottom: '1px solid #1a1a1a',
+                                              background: alerta ? '#1a0500' : 'transparent' }}>
+                  <td style={{ padding: '8px 12px', fontWeight: 600, color: '#e5e5e5', whiteSpace: 'nowrap' }}>
+                    {v.aliasMobile || `Veh. ${v.idMobile}`}
+                    {alerta && <span style={{ marginLeft: 6, color: '#ef4444', fontSize: 10 }}>⚠</span>}
+                  </td>
+                  <td style={{ padding: '8px 12px', color: '#888' }}>{v.drvAlias || '—'}</td>
+                  <td style={{ padding: '8px 12px' }}>
+                    <span style={{ fontSize: 11, color: v.speed > 0 ? '#22c55e' : '#555' }}>
+                      {v.stateDesc || (v.speed > 0 ? 'En ruta' : 'Parado')}
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px 12px', color: '#a78bfa', fontWeight: 600 }}>
+                    {v.km ? v.km.toLocaleString('es-ES') + ' km' : '—'}
+                  </td>
+                  <td style={{ padding: '8px 12px', color: v.speed > 90 ? '#ef4444' : '#ccc' }}>
+                    {v.speed > 0 ? `${v.speed} km/h` : '—'}
+                  </td>
+                  <td style={{ padding: '8px 12px', color: '#888' }}>
+                    {r?.avgSpeed > 0 ? `${Math.round(r.avgSpeed)} km/h` : '—'}
+                  </td>
+                  <td style={{ padding: '8px 12px', color: r?.maxSpeed > 110 ? '#f97316' : '#888' }}>
+                    {r?.maxSpeed > 0 ? `${r.maxSpeed} km/h` : '—'}
+                  </td>
+                  <td style={{ padding: '8px 12px', color: '#888' }}>{r?.numStops ?? '—'}</td>
+                  <td style={{ padding: '8px 12px', color: '#888' }}>{r?.transitTime ? fmtMin(r.transitTime) : '—'}</td>
+                  <td style={{ padding: '8px 12px', color: v.fuel_percent < 15 ? '#ef4444' : '#888' }}>
+                    {v.fuel_percent > 0 ? `${v.fuel_percent}%` : '—'}
+                    {r?.consum > 0 && <span style={{ color: '#555', marginLeft: 4 }}>({Math.round(r.consum)}L)</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 function hoy() { return new Date().toISOString().slice(0, 10); }
 function primerDiaMes() {
@@ -113,7 +237,7 @@ function colorPct(pct) {
   return '#4dcc7a';
 }
 
-export default function DashboardFlota({ centro }) {
+export default function DashboardFlota({ centro, refreshKey = 0 }) {
   const [desde, setDesde] = useState(primerDiaMes());
   const [hasta, setHasta]  = useState(hoy());
   const [gasoil, setGasoil] = useState(null);
@@ -135,6 +259,8 @@ export default function DashboardFlota({ centro }) {
   }, [centro, desde, hasta]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (refreshKey > 0) cargarDatos(); }, [refreshKey]);
 
   const presets = getPresets();
   const activePreset = presets.find(p => p.desde === desde && p.hasta === hasta)?.label;
@@ -153,6 +279,10 @@ export default function DashboardFlota({ centro }) {
 
   return (
     <div className="page-root" style={S.root}>
+
+      {/* ── RESUMEN GPS WEMOB (solo Getafe) ── */}
+      {centro === 'getafe' && <ResumenFlotaWemob centro={centro} />}
+
       {/* ── SELECTOR DE RANGO ── */}
       <div className="rango-bar">
         <span style={S.rangoLabel}>Desde</span>

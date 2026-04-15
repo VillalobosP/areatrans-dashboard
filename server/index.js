@@ -660,10 +660,17 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
     function parseFecha(v) {
       if (!v) return null;
       const s = String(v).trim();
+      // Número serial de Excel (ej. 46119 = 07/04/2026)
+      if (/^\d{4,5}$/.test(s)) {
+        const d = new Date(Date.UTC(1899, 11, 30) + parseInt(s, 10) * 86400000);
+        return d.toISOString().slice(0, 10);
+      }
+      // DD-MM-YYYY (guiones)
       if (s.includes('-') && s.split('-')[2]?.length === 4) {
         const [d, m, y] = s.split('-');
         return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
       }
+      // DD/MM/YYYY (barras)
       if (s.includes('/')) {
         const parts = s.split('/');
         if (parts[2]?.length === 4) {
@@ -671,6 +678,7 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
           return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
         }
       }
+      // YYYY-MM-DD (ISO)
       return s.length === 10 ? s : null;
     }
     function horaToMin(v) {
@@ -681,63 +689,69 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
     // Día de la semana (0=Dom,1=Lun...6=Sáb) → clave L,M,X,J,V,S,D
     const DOW_KEY = ['D','L','M','X','J','V','S'];
 
-    // ── 1. Leer PLANTILLA ────────────────────────────────────────────────────
-    const plantillaMap = {}; // empleado → { diasSemana: Set, horasDia: number }
-    if (req.centro.sheets.plantilla) {
-      try {
-        const rawP = await fetchSheet(req.centro.sheetId, `'${req.centro.sheets.plantilla}'!A:E`);
-        if (rawP.length > 1) {
-          rawP.slice(1).forEach(row => {
-            const emp  = (row[0] || '').trim();
-            const dias = (row[1] || '').trim().split(',').map(d => d.trim().toUpperCase()).filter(Boolean);
-            const hd   = parseFloat(row[2]) || 8;
-            if (emp) plantillaMap[emp] = { diasSemana: new Set(dias), horasDia: hd };
-          });
-        }
-      } catch(e) { console.warn('[horas] No se pudo leer PLANTILLA:', e.message); }
+    // ── Normaliza nombre: minúsculas, sin tildes, sin espacios dobles ────────
+    function normName(n) {
+      return (n||'').toLowerCase().trim()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g,' ');
     }
 
-    // ── 2. Leer INCIDENCIAS ──────────────────────────────────────────────────
-    // Cada incidencia: { empleado, tipo, inicio, fin (null=activa), obs }
-    const incidenciasList = [];
-    if (req.centro.sheets.incidencias) {
-      try {
-        const rawI = await fetchSheet(req.centro.sheetId, `'${req.centro.sheets.incidencias}'!A:E`);
-        if (rawI.length > 1) {
-          rawI.slice(1).forEach(row => {
-            const emp   = (row[0] || '').trim();
-            const tipo  = (row[1] || '').trim().toLowerCase();
-            const ini   = parseFecha(row[2]);
-            const fin   = parseFecha(row[3]) || null; // null = activa hoy
-            const obs   = (row[4] || '').trim();
-            if (emp && tipo && ini) incidenciasList.push({ empleado: emp, tipo, inicio: ini, fin, obs });
-          });
-        }
-      } catch(e) { console.warn('[horas] No se pudo leer INCIDENCIAS:', e.message); }
+    // ── 1-4. Leer todas las hojas en PARALELO para evitar timeout ────────────
+    const [rawP, rawI, calRows, raw] = await Promise.all([
+      req.centro.sheets.plantilla
+        ? fetchSheet(req.centro.sheetId, `'${req.centro.sheets.plantilla}'!A:E`).catch(e => { console.warn('[horas] No se pudo leer PLANTILLA:', e.message); return []; })
+        : Promise.resolve([]),
+      req.centro.sheets.incidencias
+        ? fetchSheet(req.centro.sheetId, `'${req.centro.sheets.incidencias}'!A:E`).catch(e => { console.warn('[horas] No se pudo leer INCIDENCIAS:', e.message); return []; })
+        : Promise.resolve([]),
+      req.centro.sheets.calendario
+        ? getCalendarioRows(req.centro).catch(e => { console.warn('[horas] No se pudo leer CALENDARIO:', e.message); return []; })
+        : Promise.resolve([]),
+      fetchSheet(req.centro.sheetId, `'${req.centro.sheets.horas}'!A:J`),
+    ]);
+
+    // ── Procesar PLANTILLA ───────────────────────────────────────────────────
+    const plantillaMap = {};
+    if (rawP.length > 1) {
+      rawP.slice(1).forEach(row => {
+        const emp  = (row[0] || '').trim();
+        const dias = (row[1] || '').trim().split(',').map(d => d.trim().toUpperCase()).filter(Boolean);
+        const hd   = parseFloat(row[2]) || 8;
+        if (emp) plantillaMap[emp] = { diasSemana: new Set(dias), horasDia: hd };
+      });
     }
+
+    // ── Procesar INCIDENCIAS ─────────────────────────────────────────────────
+    const incidenciasList = [];
+    if (rawI.length > 1) {
+      rawI.slice(1).forEach(row => {
+        const emp   = (row[0] || '').trim();
+        const tipo  = (row[1] || '').trim().toLowerCase();
+        const ini   = parseFecha(row[2]);
+        const fin   = parseFecha(row[3]) || null;
+        const obs   = (row[4] || '').trim();
+        if (emp && tipo && ini) incidenciasList.push({ empleado: emp, tipo, inicio: ini, fin, obs });
+      });
+    }
+
     // Helper: ¿está el empleado en incidencia en una fecha concreta?
     function getIncidencia(empleado, fecha) {
+      const empN = normName(empleado);
       return incidenciasList.find(inc =>
-        inc.empleado === empleado &&
+        normName(inc.empleado) === empN &&
         fecha >= inc.inicio &&
         fecha <= (inc.fin || hoy)
       ) || null;
     }
 
-    // ── 3. Leer FESTIVOS del CALENDARIO ─────────────────────────────────────
+    // ── Procesar FESTIVOS ────────────────────────────────────────────────────
     const festivosSet = new Set();
-    if (req.centro.sheets.calendario) {
-      try {
-        const calRows = await getCalendarioRows(req.centro);
-        calRows.forEach(r => {
-          if (r.ES_FESTIVO_FLAG === '1' || r.ES_FESTIVO_FLAG === 1) festivosSet.add(r.FECHA);
-        });
-      } catch(e) { console.warn('[horas] No se pudo leer CALENDARIO:', e.message); }
-    }
+    calRows.forEach(r => {
+      if (r.ES_FESTIVO_FLAG === '1' || r.ES_FESTIVO_FLAG === 1) festivosSet.add(r.FECHA);
+    });
 
-    // ── 4. Leer FICHAJES ─────────────────────────────────────────────────────
-    const raw     = await fetchSheet(req.centro.sheetId, `'${req.centro.sheets.horas}'!A:J`);
-    if (!raw.length) return res.json({ empleados: [], dias: [], data: {}, plantilla: plantillaMap, incidencias: incidenciasList });
+    // ── Fichajes ─────────────────────────────────────────────────────────────
+    if (!raw.length) return res.json({ empleados: [], dias: [], data: {}, plantilla: {}, incidencias: incidenciasList });
 
     const headers      = raw[0].map(h => h.trim());
     const idx          = k => headers.indexOf(k);
@@ -792,16 +806,20 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
       for (let i = n; i < entradas.length; i++) flags.push({ tipo: 'sin_salida',  hora: entradas[i].hora });
       for (let i = n; i < salidas.length;  i++) flags.push({ tipo: 'sin_entrada', hora: salidas[i].hora  });
 
-      const totalHoras = pares.reduce((s, p) => s + (p.horas || 0), 0);
-      const plantilla  = plantillaMap[empleado];
-      const dowKey     = DOW_KEY[new Date(fecha + 'T12:00:00').getDay()];
-      const esDiaSuyo  = plantilla?.diasSemana.has(dowKey) ?? true;
+      const totalHoras  = pares.reduce((s, p) => s + (p.horas || 0), 0);
+      const plantilla   = plantillaMap[empleado];
+      const dowKey      = DOW_KEY[new Date(fecha + 'T12:00:00').getDay()];
+      const esDiaSuyo   = plantilla?.diasSemana.has(dowKey) ?? true;
+      const esFestivo   = festivosSet.has(fecha);
+      // Es EXTRA si trabajó en día que no le toca O si es festivo
+      const esExtra     = !esDiaSuyo || esFestivo;
 
       if (!result[empleado]) result[empleado] = {};
       result[empleado][fecha] = {
         horas:    Math.round(totalHoras * 100) / 100,
         completo: flags.length === 0 && pares.length > 0,
-        esExtra:  !esDiaSuyo,  // fichó en día que no le toca
+        esExtra,
+        esFestivo,   // para mostrar "🎉 EXTRA" en lugar de solo "EXTRA"
         pares, flags, incidencias,
       };
     });
@@ -817,7 +835,18 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
           const fecha  = d.toISOString().slice(0,10);
           const dowKey = DOW_KEY[d.getDay()];
           const debeTrabajar = p.diasSemana.has(dowKey);
-          if (!debeTrabajar) continue; // no es su día — no generar celda vacía
+          if (!debeTrabajar) {
+            // Si el día ya está en el grid (otro empleado fichó), marcar libranza
+            if (diasSet.has(fecha) && (!result[emp] || !result[emp][fecha])) {
+              if (!result[emp]) result[emp] = {};
+              const festivo = festivosSet.has(fecha);
+              result[emp][fecha] = {
+                horas: 0, completo: false, esExtra: false, pares: [], flags: [], incidencias: [],
+                estadoEspecial: festivo ? 'festivo' : 'libranza',
+              };
+            }
+            continue;
+          }
 
           diasSet.add(fecha);
           if (!result[emp]) result[emp] = {};
@@ -858,10 +887,164 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
     const dias      = [...diasSet].sort();
     const empleados = [...empleadosSet].sort();
 
-    res.json({ empleados, dias, data: result, plantilla: plantillaMap, statsIncidencias });
+    // Serializar plantillaMap: convertir Set a Array para que JSON.stringify funcione
+    const plantillaSerial = {};
+    Object.entries(plantillaMap).forEach(([emp, p]) => {
+      plantillaSerial[emp] = { diasSemana: [...p.diasSemana], horasDia: p.horasDia };
+    });
+
+    res.json({ empleados, dias, data: result, plantilla: plantillaSerial, statsIncidencias });
   } catch (err) {
     console.error(`Error /api/${req.centro.id}/horas:`, err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── WeMob / Tacógrafo (solo Getafe) ──────────────────────────────────────────
+const wemob = require('./wemob');
+
+// ── Helper: carga nombres normalizados de la plantilla del centro ─────────────
+function normName(n) {
+  return (n || '').toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+async function getPlantillaNames(centro) {
+  if (!centro.sheets.plantilla) return null; // sin plantilla → sin filtro
+  try {
+    const rows = await fetchSheet(centro.sheetId, `'${centro.sheets.plantilla}'!A:A`);
+    return rows.slice(1)
+      .map(r => normName(r[0] || ''))
+      .filter(Boolean);
+  } catch { return null; }
+}
+// Comprueba si el nombre WeMob coincide con algún nombre de la plantilla.
+// Usa coincidencia parcial: basta con que alguna palabra del nombre WeMob
+// aparezca en algún nombre de la plantilla (cubre alias cortos vs nombre completo).
+function matchesPlantilla(wemobName, plantillaNames) {
+  if (!plantillaNames || plantillaNames.length === 0) return true; // sin plantilla → mostrar todo
+  if (!wemobName) return false;
+  const nw = normName(wemobName);
+  const words = nw.split(' ').filter(w => w.length > 2);
+  return plantillaNames.some(p => words.some(w => p.includes(w)) || nw.includes(p));
+}
+
+// ── Helper: lista de matrículas propias extraída de GASOIL + ENRUTAMIENTO ─────
+// WeMob aliasMobile suele ser la matrícula o un alias corto — normalizamos
+// quitando guiones y espacios para comparar "1234ABC" == "1234-ABC".
+function normPlate(s) {
+  return (s || '').toUpperCase().replace(/[\s\-\.]/g, '');
+}
+async function getFleetPlates(centro) {
+  try {
+    const results = await Promise.allSettled([
+      // Matrículas de repostajes (columna truck_id — posición variable, leer cabeceras)
+      centro.sheets.gasoil
+        ? fetchSheet(centro.sheetId, `${centro.sheets.gasoil}!A:I`)
+        : Promise.resolve([]),
+      // Matrículas de enrutamiento (columna MATRICULAS)
+      centro.sheets.enrutamiento
+        ? fetchSheet(centro.sheetId, `'${centro.sheets.enrutamiento}'!A:Z`)
+        : Promise.resolve([]),
+    ]);
+
+    const plates = new Set();
+
+    // Gasoil: buscar columna truck_id en cabecera
+    const gasoilRows = results[0].status === 'fulfilled' ? results[0].value : [];
+    if (gasoilRows.length > 1) {
+      const hdrs = gasoilRows[0].map(h => (h || '').trim().toLowerCase());
+      const col  = hdrs.indexOf('truck_id');
+      if (col >= 0) {
+        gasoilRows.slice(1).forEach(r => {
+          const p = normPlate(r[col]);
+          if (p) plates.add(p);
+        });
+      }
+    }
+
+    // Enrutamiento: buscar columna MATRICULAS en cabecera
+    const enrRows = results[1].status === 'fulfilled' ? results[1].value : [];
+    if (enrRows.length > 1) {
+      const hdrs = enrRows[0].map(h => (h || '').trim().toUpperCase());
+      const col  = hdrs.indexOf('MATRICULAS');
+      if (col >= 0) {
+        enrRows.slice(1).forEach(r => {
+          const p = normPlate(r[col]);
+          if (p) plates.add(p);
+        });
+      }
+    }
+
+    return plates.size > 0 ? [...plates] : null; // null → sin filtro
+  } catch { return null; }
+}
+function matchesFleet(wemobAlias, fleetPlates) {
+  if (!fleetPlates || fleetPlates.length === 0) return true;
+  if (!wemobAlias) return true; // sin alias → incluir (no podemos saber)
+  const p = normPlate(wemobAlias);
+  // Coincidencia exacta de matrícula, o la matrícula está contenida en el alias
+  return fleetPlates.some(fp => p === fp || p.includes(fp) || fp.includes(p));
+}
+
+// ── Resumen diario flota (vehículos + km + paradas + velocidades del día) ─────
+app.get('/api/:centro/flota-wemob', requireCentroAccess, async (req, res) => {
+  try {
+    const [{ idSession, idCompany, idUser }, plantillaNames, fleetPlates] = await Promise.all([
+      wemob.getSession(),
+      getPlantillaNames(req.centro),
+      getFleetPlates(req.centro),
+    ]);
+
+    // 1. Lista de vehículos en tiempo real
+    const allVehicles = await wemob.selUserMobileGrid(idSession, idCompany, idUser);
+
+    // 2. Doble filtro: vehículo en nuestra flota Y conductor en nuestra plantilla
+    //    Si un criterio no tiene lista (sin datos en Sheets) se ignora ese filtro.
+    const vehicles = allVehicles.filter(v =>
+      matchesFleet(v.aliasMobile, fleetPlates) &&
+      (!v.drvAlias || matchesPlantilla(v.drvAlias, plantillaNames))
+    );
+
+    // 3. Resumen del día para cada vehículo (paralelo, máx 20)
+    const hoyMidnight = new Date(); hoyMidnight.setHours(0, 0, 0, 0);
+    const initTs = hoyMidnight.getTime();
+    const endTs  = Date.now();
+
+    const resumenList = await Promise.all(
+      vehicles.slice(0, 20).map(v =>
+        wemob.selMobileResume(idSession, v.idFleet, v.idMobile, initTs, endTs)
+          .then(r => ({ idMobile: v.idMobile, ...r }))
+          .catch(() => ({ idMobile: v.idMobile, avgSpeed: 0, maxSpeed: 0, numStops: 0, odometer: 0, transitTime: 0, consum: 0 }))
+      )
+    );
+
+    // 4. Combinar grid + resumen por idMobile
+    const resumeMap = Object.fromEntries(resumenList.map(r => [r.idMobile, r]));
+    const result = vehicles.map(v => ({ ...v, resumen: resumeMap[v.idMobile] || null }));
+
+    res.json({ vehicles: result, ts: new Date().toISOString() });
+  } catch (err) {
+    console.error('[flota-wemob]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
+  try {
+    const [{ idSession, idUser }, plantillaNames] = await Promise.all([
+      wemob.getSession(),
+      getPlantillaNames(req.centro),
+    ]);
+    const allDrivers = await wemob.selDailyDrivingTimesV4(idSession, idUser);
+    // Filtrar solo conductores que estén en la plantilla del centro
+    const drivers = allDrivers.filter(d =>
+      matchesPlantilla(d.alias || d.name, plantillaNames)
+    );
+    res.json({ drivers, ts: new Date().toISOString() });
+  } catch (err) {
+    console.error('[tacografo]', err.message);
+    res.status(502).json({ error: err.message });
   }
 });
 

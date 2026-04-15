@@ -13,6 +13,7 @@ import DashboardFacturacion from './pages/DashboardFacturacion';
 import DashboardFlota      from './pages/DashboardFlota';
 import DashboardIllescas   from './pages/DashboardIllescas';
 import DashboardHoras      from './pages/DashboardHoras';
+import DashboardTacografo  from './pages/DashboardTacografo';
 import './index.css';
 
 // ── Etiquetas de centros ───────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ const TABS_BY_CENTRO = {
     { id: 'facturacion', label: 'Facturación' },
     { id: 'flota',       label: 'Flota & Gasoil' },
     { id: 'horas',       label: 'Horas' },
+    { id: 'tacografo',   label: 'Tacógrafo' },
   ],
   illescas: [
     { id: 'facturacion', label: 'Facturación & Lotes' },
@@ -46,6 +48,14 @@ function DashboardLayout() {
   const { user, logout } = useAuth();
   const { centro, tab }  = useParams();
   const navigate          = useNavigate();
+  const [refreshKey, setRefreshKey] = React.useState(0);
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  function handleRefresh() {
+    setRefreshing(true);
+    setRefreshKey(k => k + 1);
+    setTimeout(() => setRefreshing(false), 800);
+  }
 
   const TABS = TABS_BY_CENTRO[centro] || DEFAULT_TABS;
   const defaultTab = TABS[0]?.id || 'facturacion';
@@ -137,6 +147,17 @@ function DashboardLayout() {
             </Link>
           )}
 
+          {/* Actualizar datos */}
+          <button onClick={handleRefresh} title="Actualizar datos" style={{
+            background: refreshing ? '#1a2e1a' : 'transparent',
+            border: `1px solid ${refreshing ? '#34d399' : '#2a3a2a'}`,
+            borderRadius: 7, color: refreshing ? '#34d399' : '#555', fontSize: 13,
+            padding: '6px 10px', cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}>
+            <span style={{ display: 'inline-block', animation: refreshing ? 'spin 0.6s linear infinite' : 'none' }}>↻</span>
+          </button>
+
           {/* Logout */}
           <button onClick={logout} style={{
             background: 'transparent', border: '1px solid #3a2a2a',
@@ -162,15 +183,16 @@ function DashboardLayout() {
       {/* ── CONTENIDO ── */}
       {centro === 'illescas' ? (
         <>
-          {tab === 'facturacion' && <DashboardIllescas centro={centro} />}
-          {tab === 'flota'       && <DashboardFlota    centro={centro} />}
+          {tab === 'facturacion' && <DashboardIllescas centro={centro} refreshKey={refreshKey} />}
+          {tab === 'flota'       && <DashboardFlota    centro={centro} refreshKey={refreshKey} />}
         </>
       ) : (
         <>
-          {tab === 'rutas'       && <DashboardRutas       centro={centro} />}
-          {tab === 'facturacion' && <DashboardFacturacion centro={centro} />}
-          {tab === 'flota'       && <DashboardFlota        centro={centro} />}
-          {tab === 'horas'       && <DashboardHoras        centro={centro} />}
+          {tab === 'rutas'       && <DashboardRutas       centro={centro} refreshKey={refreshKey} />}
+          {tab === 'facturacion' && <DashboardFacturacion centro={centro} refreshKey={refreshKey} />}
+          {tab === 'flota'       && <DashboardFlota        centro={centro} refreshKey={refreshKey} />}
+          {tab === 'horas'       && <DashboardHoras        centro={centro} refreshKey={refreshKey} />}
+          {tab === 'tacografo'   && <DashboardTacografo    centro={centro} refreshKey={refreshKey} />}
         </>
       )}
     </div>
