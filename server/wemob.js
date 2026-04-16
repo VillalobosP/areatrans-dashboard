@@ -147,12 +147,12 @@ async function selUserMobileGrid(idSession, idCompany, idUser) {
       speed:             gi('speed'),             // velocidad actual (km/h)
       stateDesc:         g('stateDesc'),          // descripción del estado
       causeDesc:         g('causeDesc'),          // descripción de la causa
-      latitude:          gf('latitude'),
-      longitude:         gf('longitude'),
+      latitude:          gi('latitude') / 3600,   // arcsegundos → grados decimales
+      longitude:         gi('longitude') / 3600,
       fuel_percent:      gi('fuel_percent'),      // % combustible
       fuel_tank:         gi('fuel_tank'),         // litros del depósito
-      temp1:             gf('temp1'),             // temperatura sonda 1 (°C)
-      temp2:             gf('temp2'),
+      temp1:             gi('temp1') / 10,        // décimas de °C → °C
+      temp2:             gi('temp2') / 10,
       maintenanceWarning: gi('maintenanceWarning'),
       pendingSpeedAlm:   gi('pendingSpeedAlm'),   // alertas velocidad pendientes
       pendingSOSAlm:     gi('pendingSOSAlm'),
