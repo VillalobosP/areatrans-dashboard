@@ -1218,12 +1218,18 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
       }
 
       // Añadir todos los datos del vehículo a cada conductor por matrícula o driverId
+      const manualVehicles = req.centro.driverVehicles || {};
       rawDrivers = rawDrivers.map(d => {
         let plate = normPlate(d.vehicle || '');
-        // Fallback: usar driverId → plate resuelto vía driverList+vehicleGrid
+        // Fallback 1: usar driverId → plate resuelto vía driverList+vehicleGrid
         if (!speedMap[plate] && d.driverId) plate = driverIdToPlate[d.driverId] || plate;
+        // Fallback 2: mapa manual en centros.js
+        if (!speedMap[plate]) {
+          const manualPlate = normPlate(manualVehicles[d.name] || manualVehicles[d.alias] || '');
+          if (manualPlate && speedMap[manualPlate]) plate = manualPlate;
+        }
         const sv = speedMap[plate] || {};
-        const resolvedVehicle = d.vehicle || (plate || null);
+        const resolvedVehicle = (plate && plate !== '--' && speedMap[plate]) ? plate : (d.vehicle !== '--' ? d.vehicle : null);
         return { ...d, vehicle: resolvedVehicle, pendingSpeedAlm: sv.pendingSpeedAlm || 0, pendingSOSAlm: sv.pendingSOSAlm || 0, kmHoy: sv.kmHoy || 0, maxSpeedHoy: sv.maxSpeedHoy || 0 };
       });
     } else {

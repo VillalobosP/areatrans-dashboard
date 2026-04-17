@@ -18,6 +18,11 @@ const CENTROS = {
       incidencias:  'INCIDENCIAS GETAFE',
     },
     objetivos: { min: 225, obj: 250 },
+    // Asignaciones manuales conductor → matrícula (cuando WeMob no la asigna)
+    // Clave: nombre exacto como aparece en WeMob. Valor: matrícula normalizada.
+    driverVehicles: {
+      'JORGE URQUIA OCON': '',   // ← pon aquí la matrícula de Jorge (ej: '4073LGH')
+    },
   },
 
   illescas: {
