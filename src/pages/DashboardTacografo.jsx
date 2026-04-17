@@ -22,11 +22,10 @@ const ESTADOS_LABEL = {
 };
 
 // ── Calcular situación del conductor ─────────────────────────────────────────
-// IMPORTANTE: Los campos `overdriving` y `availableTime` de WeMob pueden devolver
-// 0 como valor por defecto cuando el conductor no tiene datos actualizados.
-// Usamos `drivingTime` (campo medible y fiable) como fuente de verdad principal.
-// Solo confiamos en `availableTime` si hay conducción hoy (evita falsos positivos
-// por defaults vacíos cuando la tarjeta no está insertada).
+// NOTA: `availableTime` de WeMob = tiempo acumulado en estado tacógrafo "disponible"
+// (estado 2, cuando el conductor espera carga/descarga). NO es tiempo restante de conducción.
+// Si es 0 significa que el conductor no ha estado en ese estado hoy — completamente normal.
+// El tiempo restante de conducción = MAX_COND_DIARIA - drivingTime.
 const LABEL_ESTADO_PLANTILLA = { BAJA: 'De baja médica', VACACIONES: 'De vacaciones', LIBRE: 'Día libre' };
 
 function calcSituacion(d, esHoy) {
@@ -83,14 +82,9 @@ function calcSituacion(d, esHoy) {
     detalle: `Hay ${d.pendingSpeedAlm} exceso${d.pendingSpeedAlm > 1 ? 's' : ''} de velocidad pendiente${d.pendingSpeedAlm > 1 ? 's' : ''} de revisar en el vehículo ${d.vehicle || ''}.`,
     color: '#ef4444', bg: '#2d0000', emoji: '🚗',
   };
-  // availableTime = 0 es señal válida de WeMob: tiempo del período regulatorio agotado.
-  // Solo se activa si ha conducido hoy (guard contra defaults vacíos cuando no hay tarjeta).
-  if (esHoy && haConducidoHoy && d.availableTime <= 0) return {
-    nivel: 'rojo',
-    titulo: 'Tiempo disponible agotado',
-    detalle: `WeMob indica que el tiempo de conducción del período regulatorio está agotado (conducción hoy: ${fmtSeg(d.drivingTime)}). Puede incluir conducción de días anteriores.`,
-    color: '#ef4444', bg: '#2d0000', emoji: '⛔',
-  };
+
+  // Tiempo restante de conducción hoy (basado en 9h máximo)
+  const restanteCond = Math.max(0, MAX_COND_DIARIA - d.drivingTime);
 
   // ── URGENTE (actuar en < 30 min) ─────────────────────────────────────────
   if (esHoy && d.continousDriving >= WARN_CONTINUA_2) return {
@@ -99,10 +93,10 @@ function calcSituacion(d, esHoy) {
     detalle: `Lleva ${fmtSeg(d.continousDriving)} conduciendo sin pausa. Le quedan ${fmtSeg(MAX_COND_CONTINUA - d.continousDriving)} antes de que sea obligatorio parar 45 min.`,
     color: '#f97316', bg: '#2d1200', emoji: '⚠️',
   };
-  if (esHoy && conduccionAlta && d.availableTime > 0 && d.availableTime < 3600) return {
+  if (esHoy && haConducidoHoy && restanteCond < 3600) return {
     nivel: 'urgente',
     titulo: 'Tiempo de conducción crítico',
-    detalle: `Solo le quedan ${fmtSeg(d.availableTime)} de conducción permitida hoy. Planifica el regreso urgente.`,
+    detalle: `Solo le quedan ${fmtSeg(restanteCond)} de las 9 h diarias. Planifica el regreso urgente.`,
     color: '#f97316', bg: '#2d1200', emoji: '⚠️',
   };
   if (esHoy && d.weekDrivingRest != null && d.weekDrivingRest < WARN_DESCANSO_SEM) return {
@@ -119,10 +113,10 @@ function calcSituacion(d, esHoy) {
     detalle: `Lleva ${fmtSeg(d.continousDriving)} conduciendo. Tiene ${fmtSeg(MAX_COND_CONTINUA - d.continousDriving)} antes de pausa obligatoria.`,
     color: '#eab308', bg: '#2a2000', emoji: '🟡',
   };
-  if (esHoy && conduccionAlta && d.availableTime > 0 && d.availableTime < WARN_DISPONIBLE) return {
+  if (esHoy && haConducidoHoy && restanteCond < WARN_DISPONIBLE) return {
     nivel: 'aviso',
     titulo: 'Tiempo de conducción limitado',
-    detalle: `Le quedan ${fmtSeg(d.availableTime)} de conducción hoy. Tiene en cuenta el trayecto de vuelta.`,
+    detalle: `Le quedan ${fmtSeg(restanteCond)} de las 9 h diarias. Ten en cuenta el trayecto de vuelta.`,
     color: '#eab308', bg: '#2a2000', emoji: '🟡',
   };
   if (esHoy && d.weekDrivingRest != null && d.weekDrivingRest < MAX_DESCANSO_SEM) return {
@@ -133,8 +127,9 @@ function calcSituacion(d, esHoy) {
   };
 
   // ── OK ────────────────────────────────────────────────────────────────────
-  const puedeConducir = esHoy && haConducidoHoy && d.availableTime > 0
-    ? `Puede conducir ${fmtSeg(d.availableTime)} más hoy.`
+  const restante = esHoy ? Math.max(0, MAX_COND_DIARIA - d.drivingTime) : 0;
+  const puedeConducir = esHoy && haConducidoHoy && restante > 0
+    ? `Puede conducir ${fmtSeg(restante)} más hoy.`
     : '';
   return {
     nivel: 'ok',
@@ -251,7 +246,8 @@ function TarjetaConductor({ d, expanded, onToggle, esHoy, centro }) {
   const estado = ESTADOS_LABEL[d.actualState] ?? '—';
 
   const condColor  = d.drivingTime >= MAX_COND_DIARIA ? '#ef4444' : d.drivingTime >= 7*3600 ? '#f97316' : '#e5e5e5';
-  const dispColor  = d.availableTime <= 0 ? '#ef4444' : d.availableTime < 3600 ? '#f97316' : d.availableTime < WARN_DISPONIBLE ? '#eab308' : '#22c55e';
+  const restanteConductor = esHoy ? Math.max(0, MAX_COND_DIARIA - d.drivingTime) : 0;
+  const dispColor  = restanteConductor <= 0 ? '#ef4444' : restanteConductor < 3600 ? '#f97316' : restanteConductor < WARN_DISPONIBLE ? '#eab308' : '#22c55e';
   const pausaTomada = d.drivingTime > 0 && d.restingTime >= 2700; // ≥45min descanso acumulado
 
   return (
@@ -314,8 +310,11 @@ function TarjetaConductor({ d, expanded, onToggle, esHoy, centro }) {
           <ChipTiempo label="Cond." valor={fmtH(d.drivingTime)} color={condColor} />
           <ChipTiempo label="Desc." valor={fmtH(d.restingTime)} color={d.restingTime >= MIN_DESCANSO_DIA ? '#22c55e' : '#888'} />
           <ChipTiempo label="Otros" valor={d.workingTime > 0 ? fmtH(d.workingTime) : '—'} color="#60a5fa" />
-          {esHoy && d.availableTime != null && (
-            <ChipTiempo label="Disp." valor={d.availableTime <= 0 ? 'Agotado' : fmtH(d.availableTime)} color={dispColor} />
+          {esHoy && (
+            <ChipTiempo label="Restante" valor={restanteConductor <= 0 ? 'Agotado' : fmtH(restanteConductor)} color={dispColor} />
+          )}
+          {esHoy && d.availableTime > 0 && (
+            <ChipTiempo label="Espera" valor={fmtH(d.availableTime)} color="#555" />
           )}
           {esHoy && d.continousDriving != null && d.continousDriving > 0 && (
             <ChipTiempo label="Continua" valor={fmtH(d.continousDriving)}
@@ -374,8 +373,9 @@ function TarjetaConductor({ d, expanded, onToggle, esHoy, centro }) {
 
           {esHoy && (
             <BloqueDetalle titulo="Tiempos restantes hoy">
-              <LineaDetalle label="Puede conducir" valor={d.availableTime <= 0 ? 'Agotado' : fmtSeg(d.availableTime)}
-                alerta={d.availableTime <= 0} ok={d.availableTime > WARN_DISPONIBLE} />
+              <LineaDetalle label="Puede conducir"
+                valor={restanteConductor <= 0 ? 'Agotado' : fmtSeg(restanteConductor)}
+                alerta={restanteConductor <= 0} ok={restanteConductor > WARN_DISPONIBLE} />
               {d.continousDriving != null && (
                 <LineaDetalle label="Antes de pausa oblig."
                   valor={d.continousDriving >= MAX_COND_CONTINUA ? 'Debe parar ya' : fmtSeg(MAX_COND_CONTINUA - d.continousDriving)}
@@ -436,12 +436,11 @@ function TarjetaConductor({ d, expanded, onToggle, esHoy, centro }) {
             )}
           </BloqueDetalle>
 
-          {(d.infraction > 0 || d.overdriving > 0 || d.tarjetaOlvidada || (esHoy && d.availableTime <= 0 && d.drivingTime > 0) || d.pendingSpeedAlm > 0) ? (
+          {(d.infraction > 0 || d.overdriving > 300 || d.tarjetaOlvidada || d.pendingSpeedAlm > 0) ? (
             <BloqueDetalle titulo="Qué hacer">
               <div style={{ fontSize: 12, color: '#ccc', lineHeight: 1.8, maxWidth: 300 }}>
                 {d.infraction > 0 && <>🔴 Contactar con el conductor para revisar la infracción registrada en el tacógrafo.<br /></>}
                 {(d.drivingTime >= MAX_COND_DIARIA || d.overdriving > 300) && <>⛔ No puede conducir más hoy. Organizar relevo o parada obligatoria.<br /></>}
-                {esHoy && d.availableTime <= 0 && d.drivingTime > 0 && !(d.drivingTime >= MAX_COND_DIARIA) && <>⛔ Tiempo disponible del período regulatorio agotado (puede incluir días anteriores). No puede conducir más hasta completar el descanso reglamentario.<br /></>}
                 {d.tarjetaOlvidada && <>📛 Avisar al conductor para que retire la tarjeta del tacógrafo.<br /></>}
                 {d.pendingSpeedAlm > 0 && <>🚗 Revisar {d.pendingSpeedAlm} exceso{d.pendingSpeedAlm > 1 ? 's' : ''} de velocidad en portal WeMob (incluye tipo de vía y velocidad medida).<br /></>}
               </div>
