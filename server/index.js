@@ -1161,18 +1161,23 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
       const vehicles = vehicleGrid.value || [];
 
       // Construir mapa matrícula → datos del vehículo (alertas + ids para resume)
+      // También mapa drvAlias → placa (fallback cuando el conductor no tiene vehículo asignado en tacógrafo)
       const speedMap = {};
+      const drvAliasMap = {}; // drvAlias_normalizado → plate
       for (const v of vehicles) {
         const plate = normPlate(v.aliasMobile || v.aliasFleet || '');
-        if (plate) speedMap[plate] = {
-          pendingSpeedAlm: v.pendingSpeedAlm,
-          pendingSOSAlm:   v.pendingSOSAlm,
-          speed:           v.speed,
-          idFleet:         v.idFleet,
-          idMobile:        v.idMobile,
-          kmHoy:           0,
-          maxSpeedHoy:     0,
-        };
+        if (plate) {
+          speedMap[plate] = {
+            pendingSpeedAlm: v.pendingSpeedAlm,
+            pendingSOSAlm:   v.pendingSOSAlm,
+            speed:           v.speed,
+            idFleet:         v.idFleet,
+            idMobile:        v.idMobile,
+            kmHoy:           0,
+            maxSpeedHoy:     0,
+          };
+          if (v.drvAlias) drvAliasMap[v.drvAlias.trim().toUpperCase()] = plate;
+        }
       }
 
       // Llamar selMobileResume para TODOS los vehículos del grid
@@ -1201,10 +1206,22 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
       }
 
       // Añadir todos los datos del vehículo a cada conductor por matrícula
+      // Si el conductor no tiene vehículo en WeMob, buscar por drvAlias del grid
       rawDrivers = rawDrivers.map(d => {
-        const plate = normPlate(d.vehicle || '');
+        let plate = normPlate(d.vehicle || '');
+        if (!plate || !speedMap[plate]) {
+          // Fallback: buscar el vehículo cuyo drvAlias coincide con el nombre/alias del conductor
+          const dKey = (d.alias || d.name || '').trim().toUpperCase();
+          plate = drvAliasMap[dKey] || '';
+          if (!plate) {
+            // Intentar match parcial (primer apellido o alias)
+            const matchKey = Object.keys(drvAliasMap).find(k => k.includes(dKey) || dKey.includes(k));
+            if (matchKey) plate = drvAliasMap[matchKey];
+          }
+        }
         const sv = speedMap[plate] || {};
-        return { ...d, pendingSpeedAlm: sv.pendingSpeedAlm || 0, pendingSOSAlm: sv.pendingSOSAlm || 0, kmHoy: sv.kmHoy || 0, maxSpeedHoy: sv.maxSpeedHoy || 0 };
+        const resolvedVehicle = d.vehicle || (plate || null);
+        return { ...d, vehicle: resolvedVehicle, pendingSpeedAlm: sv.pendingSpeedAlm || 0, pendingSOSAlm: sv.pendingSOSAlm || 0, kmHoy: sv.kmHoy || 0, maxSpeedHoy: sv.maxSpeedHoy || 0 };
       });
     } else {
       // ── Histórico: obtener todos los conductores y consultar por día ─────────
