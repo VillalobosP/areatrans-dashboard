@@ -1350,6 +1350,23 @@ app.get('/api/:centro/tacografo-timeline/:driverId', requireCentroAccess, async 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
+// ── Debug: ver datos raw de WeMob (drivers + vehicles) ────────────────────────
+app.get('/api/debug/wemob', async (_, res) => {
+  try {
+    const { idSession, idCompany, idUser } = await wemob.getSession();
+    const [drivers, vehicles, driverList] = await Promise.all([
+      wemob.selDailyDrivingTimesV4(idSession, idUser),
+      wemob.selUserMobileGrid(idSession, idCompany, idUser),
+      wemob.getDriverList(idSession, idCompany),
+    ]);
+    res.json({
+      drivers: drivers.map(d => ({ driverId: d.driverId, name: d.name, alias: d.alias, vehicle: d.vehicle })),
+      vehicles: vehicles.map(v => ({ idFleet: v.idFleet, idMobile: v.idMobile, aliasMobile: v.aliasMobile, drvAlias: v.drvAlias })),
+      driverList: driverList.map(d => ({ idDriver: d.idDriver, alias: d.alias, fullName: d.fullName })),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => console.log(`Areatrans API en http://localhost:${PORT}`));
 }
