@@ -959,15 +959,52 @@ async function getPlantillaNames(centro) {
       .filter(Boolean);
   } catch { return null; }
 }
+
+// Lee la plantilla con columna D = OBSERVACIONES (Baja médica, Vacaciones, etc.).
+// Devuelve { entries: [{name, estado}] | null }
+function normEstado(obs) {
+  const o = (obs || '').toLowerCase().trim();
+  if (!o) return 'ACTIVO';
+  if (o.includes('baja')) return 'BAJA';
+  if (o.includes('vacaci')) return 'VACACIONES';
+  if (o.includes('libre')) return 'LIBRE';
+  if (o.includes('permiso')) return 'PERMISO';
+  return o.toUpperCase();
+}
+async function getPlantillaConfig(centro) {
+  if (!centro.sheets.plantilla) return { entries: null };
+  try {
+    const rows = await fetchSheet(centro.sheetId, `'${centro.sheets.plantilla}'!A:D`);
+    const entries = rows.slice(1)
+      .map(r => ({
+        name:   normName(r[0] || ''),
+        estado: normEstado(r[3] || ''),  // columna D = observaciones
+      }))
+      .filter(e => e.name);
+    return { entries: entries.length > 0 ? entries : null };
+  } catch { return { entries: null }; }
+}
 // Comprueba si el nombre WeMob coincide con algún nombre de la plantilla.
-// Usa coincidencia parcial: basta con que alguna palabra del nombre WeMob
-// aparezca en algún nombre de la plantilla (cubre alias cortos vs nombre completo).
+// Algoritmo robusto: para evitar falsos positivos (p.ej. "GARCIA" matcheando cualquier García)
+// se requiere que al menos 2 palabras significativas coincidan entre ambos nombres,
+// salvo que alguno de los dos nombres tenga solo 1 o 2 palabras.
 function matchesPlantilla(wemobName, plantillaNames) {
-  if (!plantillaNames || plantillaNames.length === 0) return true; // sin plantilla → mostrar todo
+  if (!plantillaNames || plantillaNames.length === 0) return true;
   if (!wemobName) return false;
   const nw = normName(wemobName);
-  const words = nw.split(' ').filter(w => w.length > 2);
-  return plantillaNames.some(p => words.some(w => p.includes(w)) || nw.includes(p));
+  // Ignorar si es un alias alfanumérico tipo matrícula "4069LGH"
+  if (/^\d+[a-z]+\d*$|^[a-z]\.[a-z]+$/.test(nw.replace(/\s/,''))) return false;
+  const wordsW = nw.split(' ').filter(w => w.length > 3);
+
+  return plantillaNames.some(p => {
+    const wordsP = p.split(' ').filter(w => w.length > 3);
+    if (!wordsP.length || !wordsW.length) return false;
+    // Contar palabras que aparecen en ambos nombres
+    const matches = wordsW.filter(w => wordsP.some(pw => pw === w || pw.startsWith(w) || w.startsWith(pw)));
+    const minWords = Math.min(wordsW.length, wordsP.length);
+    // Requiere al menos 2 coincidencias, o todas las palabras si hay pocas (≤2)
+    return matches.length >= 2 || (minWords <= 2 && matches.length >= minWords);
+  });
 }
 
 // ── Helper: lista de matrículas propias extraída de GASOIL + ENRUTAMIENTO ─────
@@ -1071,20 +1108,198 @@ app.get('/api/:centro/flota-wemob', requireCentroAccess, async (req, res) => {
   }
 });
 
+// ── Helper: deduplicar conductores (mismo driverId o mismo nombre normalizado)
+function deduplicarDrivers(drivers) {
+  // 1) Por driverId: queda el de mayor lastUpdate
+  const porId = new Map();
+  for (const d of drivers) {
+    const prev = porId.get(d.driverId);
+    if (!prev || d.lastUpdate > prev.lastUpdate) porId.set(d.driverId, d);
+  }
+  // 2) Por nombre normalizado: queda el de mayor drivingTime
+  const porNombre = new Map();
+  for (const d of porId.values()) {
+    const key = normName(d.alias || d.name || String(d.driverId));
+    const prev = porNombre.get(key);
+    if (!prev || d.drivingTime > prev.drivingTime) porNombre.set(key, d);
+  }
+  return [...porNombre.values()];
+}
+
+// ── Helper: detectar tarjeta olvidada
+// Si algún contador diario supera 16h es imposible → tarjeta sin retirar
+function detectarTarjetaOlvidada(d) {
+  const LIMITE = 16 * 3600;
+  if (d.workingTime  > LIMITE) return { tipo: 'trabajo',   valor: d.workingTime  };
+  if (d.restingTime  > LIMITE) return { tipo: 'descanso',  valor: d.restingTime  };
+  if (d.drivingTime  > LIMITE) return { tipo: 'conduccion',valor: d.drivingTime  };
+  return null;
+}
+
 app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
   try {
-    const [{ idSession, idUser }, plantillaNames] = await Promise.all([
+    const fecha = req.query.fecha; // YYYY-MM-DD — si ausente → hoy (tiempo real)
+    const hoy   = new Date().toISOString().slice(0, 10);
+    const esHoy = !fecha || fecha === hoy;
+
+    const [sess, plantillaConfig] = await Promise.all([
       wemob.getSession(),
-      getPlantillaNames(req.centro),
+      getPlantillaConfig(req.centro),
     ]);
-    const allDrivers = await wemob.selDailyDrivingTimesV4(idSession, idUser);
-    // Filtrar solo conductores que estén en la plantilla del centro
-    const drivers = allDrivers.filter(d =>
-      matchesPlantilla(d.alias || d.name, plantillaNames)
-    );
-    res.json({ drivers, ts: new Date().toISOString() });
+    const { idSession, idCompany, idUser } = sess;
+    const plantillaNames = plantillaConfig.entries ? plantillaConfig.entries.map(e => e.name) : null;
+
+    let rawDrivers;
+
+    if (esHoy) {
+      // ── Tiempo real: conductores + grid de vehículos ──────────────────────────
+      const [driverData, vehicleGrid] = await Promise.allSettled([
+        wemob.selDailyDrivingTimesV4(idSession, idUser),
+        wemob.selUserMobileGrid(idSession, idCompany, idUser),
+      ]);
+      rawDrivers = driverData.value || [];
+      const vehicles = vehicleGrid.value || [];
+
+      // Construir mapa matrícula → datos del vehículo (alertas + ids para resume)
+      const speedMap = {};
+      for (const v of vehicles) {
+        const plate = normPlate(v.aliasMobile || v.aliasFleet || '');
+        if (plate) speedMap[plate] = {
+          pendingSpeedAlm: v.pendingSpeedAlm,
+          pendingSOSAlm:   v.pendingSOSAlm,
+          speed:           v.speed,
+          idFleet:         v.idFleet,
+          idMobile:        v.idMobile,
+          kmHoy:           0,
+          maxSpeedHoy:     0,
+        };
+      }
+
+      // Llamar selMobileResume solo para vehículos de conductores en plantilla
+      const hoyMidnight = new Date(); hoyMidnight.setHours(0, 0, 0, 0);
+      const initTs = hoyMidnight.getTime();
+      const endTs  = Date.now();
+
+      const plantillaVehPlates = [...new Set(
+        rawDrivers
+          .filter(d => matchesPlantilla(d.name || d.alias, plantillaNames))
+          .map(d => normPlate(d.vehicle || ''))
+          .filter(p => p && speedMap[p])
+      )];
+
+      const BATCH = 5;
+      for (let i = 0; i < plantillaVehPlates.length; i += BATCH) {
+        const lote = plantillaVehPlates.slice(i, i + BATCH);
+        const results = await Promise.allSettled(
+          lote.map(plate => {
+            const sv = speedMap[plate];
+            return wemob.selMobileResume(idSession, sv.idFleet, sv.idMobile, initTs, endTs)
+              .then(r => ({ plate, kmHoy: r.odometer || 0, maxSpeedHoy: r.maxSpeed || 0 }))
+              .catch(() => ({ plate, kmHoy: 0, maxSpeedHoy: 0 }));
+          })
+        );
+        results.forEach(r => {
+          if (r.status === 'fulfilled') {
+            const { plate, kmHoy, maxSpeedHoy } = r.value;
+            if (speedMap[plate]) { speedMap[plate].kmHoy = kmHoy; speedMap[plate].maxSpeedHoy = maxSpeedHoy; }
+          }
+        });
+      }
+
+      // Añadir todos los datos del vehículo a cada conductor por matrícula
+      rawDrivers = rawDrivers.map(d => {
+        const plate = normPlate(d.vehicle || '');
+        const sv = speedMap[plate] || {};
+        return { ...d, pendingSpeedAlm: sv.pendingSpeedAlm || 0, pendingSOSAlm: sv.pendingSOSAlm || 0, kmHoy: sv.kmHoy || 0, maxSpeedHoy: sv.maxSpeedHoy || 0 };
+      });
+    } else {
+      // ── Histórico: obtener todos los conductores y consultar por día ─────────
+      const allDriverList = await wemob.getDriverList(idSession, idCompany);
+      // Filtrar a los de la plantilla
+      const plantillaDrivers = allDriverList.filter(d =>
+        matchesPlantilla(d.fullName || d.alias, plantillaNames)
+      );
+      // Rango de timestamps para el día solicitado (medianoche a 23:59:59 UTC)
+      const initTs = new Date(`${fecha}T00:00:00Z`).getTime();
+      const endTs  = new Date(`${fecha}T23:59:59Z`).getTime();
+      // Llamadas paralelas con límite 5 concurrentes
+      const BATCH = 5;
+      rawDrivers = [];
+      for (let i = 0; i < plantillaDrivers.length; i += BATCH) {
+        const lote = plantillaDrivers.slice(i, i + BATCH);
+        const results = await Promise.allSettled(
+          lote.map(d => wemob.getDriverTimes(idSession, d.idDriver, initTs, endTs)
+            .then(t => ({
+              driverId:   d.idDriver,
+              name:       d.fullName,
+              alias:      d.alias,
+              ...t,
+              actualState: null,   // no disponible en histórico
+              continousDriving: null,
+              vehicle:    null,
+              weekDrivingRest: null,
+              twoWeekDrivingRest: null,
+              lastUpdate: initTs,
+            }))
+          )
+        );
+        results.forEach(r => { if (r.status === 'fulfilled') rawDrivers.push(r.value); });
+      }
+    }
+
+    // Deduplicar + marcar enPlantilla + estadoPlantilla + tarjeta olvidada
+    const dedup = deduplicarDrivers(rawDrivers);
+    const drivers = dedup.map(d => {
+      const enPlantilla = plantillaNames && plantillaNames.length > 0
+        ? matchesPlantilla(d.name || d.alias, plantillaNames)
+        : true;
+      // Buscar estado del conductor en la plantilla (BAJA, VACACIONES, LIBRE…)
+      let estadoPlantilla = null;
+      if (enPlantilla && plantillaConfig.entries) {
+        const entry = plantillaConfig.entries.find(e =>
+          matchesPlantilla(d.name || d.alias, [e.name])
+        );
+        if (entry && entry.estado !== 'ACTIVO') estadoPlantilla = entry.estado;
+      }
+      return {
+        ...d,
+        enPlantilla,
+        estadoPlantilla,
+        // Si el conductor está inactivo, no marcar tarjeta olvidada (es esperado)
+        tarjetaOlvidada: estadoPlantilla ? null : detectarTarjetaOlvidada(d),
+      };
+    });
+
+    // Conductores ACTIVOS de la plantilla sin señal en WeMob (solo en tiempo real)
+    // Los inactivos (BAJA, VACACIONES, LIBRE) se excluyen del aviso "sin señal"
+    const activosPlantilla = plantillaConfig.entries
+      ? plantillaConfig.entries.filter(e => e.estado === 'ACTIVO' || e.estado === '')
+      : null;
+    const missing = esHoy && activosPlantilla
+      ? activosPlantilla
+          .map(e => e.name)
+          .filter(pn => !dedup.some(d => matchesPlantilla(d.name || d.alias, [pn])))
+      : [];
+
+    res.json({ drivers, missing, esHoy, fecha: fecha || hoy, ts: new Date().toISOString() });
   } catch (err) {
     console.error('[tacografo]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// ── GET /api/:centro/tacografo-timeline/:driverId ─────────────────────────────
+// Timeline del día de un conductor (cargado lazy cuando se expande la tarjeta)
+app.get('/api/:centro/tacografo-timeline/:driverId', requireCentroAccess, async (req, res) => {
+  try {
+    const { idSession } = await wemob.getSession();
+    const driverId = parseInt(req.params.driverId);
+    if (!driverId || driverId <= 0) return res.status(400).json({ error: 'driverId inválido' });
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const timeline = await wemob.selTimeline(idSession, driverId, hoy.getTime());
+    res.json({ timeline, ts: new Date().toISOString() });
+  } catch (err) {
+    console.error('[tacografo-timeline]', err.message);
     res.status(502).json({ error: err.message });
   }
 });
