@@ -1152,31 +1152,43 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
     let rawDrivers;
 
     if (esHoy) {
-      // ── Tiempo real: conductores + grid de vehículos ──────────────────────────
-      const [driverData, vehicleGrid] = await Promise.allSettled([
+      // ── Tiempo real: conductores + grid de vehículos + lista de conductores ──
+      const [driverData, vehicleGrid, driverList] = await Promise.allSettled([
         wemob.selDailyDrivingTimesV4(idSession, idUser),
         wemob.selUserMobileGrid(idSession, idCompany, idUser),
+        wemob.getDriverList(idSession, idCompany),
       ]);
       rawDrivers = driverData.value || [];
       const vehicles = vehicleGrid.value || [];
+      const driverListData = driverList.value || [];
 
-      // Construir mapa matrícula → datos del vehículo (alertas + ids para resume)
-      // También mapa drvAlias → placa (fallback cuando el conductor no tiene vehículo asignado en tacógrafo)
+      // Construir mapa matrícula → datos del vehículo
       const speedMap = {};
-      const drvAliasMap = {}; // drvAlias_normalizado → plate
       for (const v of vehicles) {
         const plate = normPlate(v.aliasMobile || v.aliasFleet || '');
-        if (plate) {
-          speedMap[plate] = {
-            pendingSpeedAlm: v.pendingSpeedAlm,
-            pendingSOSAlm:   v.pendingSOSAlm,
-            speed:           v.speed,
-            idFleet:         v.idFleet,
-            idMobile:        v.idMobile,
-            kmHoy:           0,
-            maxSpeedHoy:     0,
-          };
-          if (v.drvAlias) drvAliasMap[v.drvAlias.trim().toUpperCase()] = plate;
+        if (plate) speedMap[plate] = {
+          pendingSpeedAlm: v.pendingSpeedAlm,
+          pendingSOSAlm:   v.pendingSOSAlm,
+          speed:           v.speed,
+          idFleet:         v.idFleet,
+          idMobile:        v.idMobile,
+          kmHoy:           0,
+          maxSpeedHoy:     0,
+        };
+      }
+
+      // Construir mapa driverId → placa usando driverList como puente:
+      // driverList.alias === drvAlias del vehicle grid (mismo campo en WeMob)
+      const driverIdToPlate = {}; // idDriver → plate
+      const aliasToDriverId = {};
+      for (const d of driverListData) {
+        if (d.alias) aliasToDriverId[d.alias.trim().toUpperCase()] = d.idDriver;
+      }
+      for (const v of vehicles) {
+        const plate = normPlate(v.aliasMobile || v.aliasFleet || '');
+        if (plate && v.drvAlias) {
+          const idDrv = aliasToDriverId[v.drvAlias.trim().toUpperCase()];
+          if (idDrv) driverIdToPlate[idDrv] = plate;
         }
       }
 
@@ -1205,20 +1217,11 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
         });
       }
 
-      // Añadir todos los datos del vehículo a cada conductor por matrícula
-      // Si el conductor no tiene vehículo en WeMob, buscar por drvAlias del grid
+      // Añadir todos los datos del vehículo a cada conductor por matrícula o driverId
       rawDrivers = rawDrivers.map(d => {
         let plate = normPlate(d.vehicle || '');
-        if (!plate || !speedMap[plate]) {
-          // Fallback: buscar el vehículo cuyo drvAlias coincide con el nombre/alias del conductor
-          const dKey = (d.alias || d.name || '').trim().toUpperCase();
-          plate = drvAliasMap[dKey] || '';
-          if (!plate) {
-            // Intentar match parcial (primer apellido o alias)
-            const matchKey = Object.keys(drvAliasMap).find(k => k.includes(dKey) || dKey.includes(k));
-            if (matchKey) plate = drvAliasMap[matchKey];
-          }
-        }
+        // Fallback: usar driverId → plate resuelto vía driverList+vehicleGrid
+        if (!speedMap[plate] && d.driverId) plate = driverIdToPlate[d.driverId] || plate;
         const sv = speedMap[plate] || {};
         const resolvedVehicle = d.vehicle || (plate || null);
         return { ...d, vehicle: resolvedVehicle, pendingSpeedAlm: sv.pendingSpeedAlm || 0, pendingSOSAlm: sv.pendingSOSAlm || 0, kmHoy: sv.kmHoy || 0, maxSpeedHoy: sv.maxSpeedHoy || 0 };
