@@ -21,7 +21,7 @@ const CENTROS = {
     // Asignaciones manuales conductor → matrícula (cuando WeMob no la asigna)
     // Clave: nombre exacto como aparece en WeMob. Valor: matrícula normalizada.
     driverVehicles: {
-      'JORGE URQUIA OCON': '',   // ← pon aquí la matrícula de Jorge (ej: '4073LGH')
+      'JORGE URQUIA OCON': '9778KFY',
     },
   },
 
