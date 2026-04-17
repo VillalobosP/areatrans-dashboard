@@ -40,7 +40,6 @@ function calcSituacion(d, esHoy) {
   }
 
   const haConducidoHoy   = d.drivingTime  > 0;
-  const conduccionAlta   = d.drivingTime  >= 6 * 3600;   // 6h+ → datos fiables
   const conduccionMaxima = d.drivingTime  >= MAX_COND_DIARIA; // ≥ 9h
   const excessoReal      = d.overdriving  > 300 && conduccionMaxima; // >5min Y han conducido 9h+
   const velAlert         = (d.pendingSpeedAlm || 0) > 0;

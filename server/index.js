@@ -1175,21 +1175,15 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
         };
       }
 
-      // Llamar selMobileResume solo para vehículos de conductores en plantilla
+      // Llamar selMobileResume para TODOS los vehículos del grid
       const hoyMidnight = new Date(); hoyMidnight.setHours(0, 0, 0, 0);
       const initTs = hoyMidnight.getTime();
       const endTs  = Date.now();
 
-      const plantillaVehPlates = [...new Set(
-        rawDrivers
-          .filter(d => matchesPlantilla(d.name || d.alias, plantillaNames))
-          .map(d => normPlate(d.vehicle || ''))
-          .filter(p => p && speedMap[p])
-      )];
-
+      const allPlates = Object.keys(speedMap);
       const BATCH = 5;
-      for (let i = 0; i < plantillaVehPlates.length; i += BATCH) {
-        const lote = plantillaVehPlates.slice(i, i + BATCH);
+      for (let i = 0; i < allPlates.length; i += BATCH) {
+        const lote = allPlates.slice(i, i + BATCH);
         const results = await Promise.allSettled(
           lote.map(plate => {
             const sv = speedMap[plate];
@@ -1222,26 +1216,55 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
       // Rango de timestamps para el día solicitado (medianoche a 23:59:59 UTC)
       const initTs = new Date(`${fecha}T00:00:00Z`).getTime();
       const endTs  = new Date(`${fecha}T23:59:59Z`).getTime();
+
+      // Obtener grid de vehículos (asignaciones actuales) para km/velocidad históricos
+      // Usamos drvAlias del grid para relacionar conductor → vehículo
+      let histVehicleMap = {}; // drvAlias_normalizado → {idFleet, idMobile, aliasMobile}
+      try {
+        const vehicleGrid = await wemob.selUserMobileGrid(idSession, idCompany, idUser);
+        for (const v of vehicleGrid) {
+          if (v.drvAlias) {
+            const key = v.drvAlias.trim().toUpperCase();
+            histVehicleMap[key] = { idFleet: v.idFleet, idMobile: v.idMobile, plate: normPlate(v.aliasMobile || '') };
+          }
+        }
+      } catch (_) { /* sin vehicle map, km quedará en 0 */ }
+
       // Llamadas paralelas con límite 5 concurrentes
       const BATCH = 5;
       rawDrivers = [];
       for (let i = 0; i < plantillaDrivers.length; i += BATCH) {
         const lote = plantillaDrivers.slice(i, i + BATCH);
         const results = await Promise.allSettled(
-          lote.map(d => wemob.getDriverTimes(idSession, d.idDriver, initTs, endTs)
-            .then(t => ({
+          lote.map(async d => {
+            const times = await wemob.getDriverTimes(idSession, d.idDriver, initTs, endTs);
+            // Buscar vehículo del conductor en el mapa (por alias o nombre completo)
+            const dKey = (d.alias || d.fullName || '').trim().toUpperCase();
+            const veh = histVehicleMap[dKey]
+              || Object.values(histVehicleMap).find(v => v.plate && matchesPlantilla(d.fullName, [v.plate]));
+            let kmHoy = 0, maxSpeedHoy = 0;
+            if (veh) {
+              try {
+                const resume = await wemob.selMobileResume(idSession, veh.idFleet, veh.idMobile, initTs, endTs);
+                kmHoy = resume.odometer || 0;
+                maxSpeedHoy = resume.maxSpeed || 0;
+              } catch (_) {}
+            }
+            return {
               driverId:   d.idDriver,
               name:       d.fullName,
               alias:      d.alias,
-              ...t,
-              actualState: null,   // no disponible en histórico
+              vehicle:    veh ? veh.plate : null,
+              ...times,
+              kmHoy,
+              maxSpeedHoy,
+              actualState: null,
               continousDriving: null,
-              vehicle:    null,
               weekDrivingRest: null,
               twoWeekDrivingRest: null,
               lastUpdate: initTs,
-            }))
-          )
+            };
+          })
         );
         results.forEach(r => { if (r.status === 'fulfilled') rawDrivers.push(r.value); });
       }
