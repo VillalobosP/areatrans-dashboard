@@ -330,6 +330,20 @@ function TarjetaConductor({ d, expanded, onToggle, esHoy, centro }) {
               Pausa {pausaTomada ? '✓' : '—'}
             </span>
           )}
+          {d.horaInicio && (
+            <ChipTiempo
+              label="Inicio"
+              valor={new Date(d.horaInicio).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+              color="#555"
+            />
+          )}
+          {d.horaFin && (
+            <ChipTiempo
+              label="Fin"
+              valor={new Date(d.horaFin).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+              color="#22c55e"
+            />
+          )}
         </div>
       )}
 

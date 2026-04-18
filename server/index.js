@@ -1232,6 +1232,34 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
         const resolvedVehicle = (plate && plate !== '--' && speedMap[plate]) ? plate : (d.vehicle !== '--' ? d.vehicle : null);
         return { ...d, vehicle: resolvedVehicle, pendingSpeedAlm: sv.pendingSpeedAlm || 0, pendingSOSAlm: sv.pendingSOSAlm || 0, kmHoy: sv.kmHoy || 0, maxSpeedHoy: sv.maxSpeedHoy || 0 };
       });
+
+      // Obtener hora de inicio y fin de jornada de conductores de plantilla via selTimeline
+      const plantillaIds = rawDrivers
+        .filter(d => matchesPlantilla(d.name || d.alias, plantillaNames) && d.driverId)
+        .map(d => d.driverId);
+      const timelineMap = {}; // driverId → { horaInicio, horaFin }
+      await Promise.allSettled(
+        plantillaIds.map(driverId =>
+          wemob.selTimeline(idSession, driverId, initTs)
+            .then(entries => {
+              if (!entries.length) return;
+              const first = entries[0];
+              const last  = entries[entries.length - 1];
+              const ahora = Date.now();
+              timelineMap[driverId] = {
+                horaInicio: first.startMs || null,
+                // Si el último bloque terminó hace menos de 5 min → sigue activo
+                horaFin: (last.endMs && (ahora - last.endMs) > 5 * 60 * 1000) ? last.endMs : null,
+              };
+            })
+            .catch(() => {})
+        )
+      );
+      rawDrivers = rawDrivers.map(d => ({
+        ...d,
+        horaInicio: timelineMap[d.driverId]?.horaInicio || null,
+        horaFin:    timelineMap[d.driverId]?.horaFin    || null,
+      }));
     } else {
       // ── Histórico: obtener todos los conductores y consultar por día ─────────
       const allDriverList = await wemob.getDriverList(idSession, idCompany);
