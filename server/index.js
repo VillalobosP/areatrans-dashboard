@@ -1233,6 +1233,17 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
         return { ...d, vehicle: resolvedVehicle, pendingSpeedAlm: sv.pendingSpeedAlm || 0, pendingSOSAlm: sv.pendingSOSAlm || 0, kmHoy: sv.kmHoy || 0, maxSpeedHoy: sv.maxSpeedHoy || 0 };
       });
 
+      // Medianoche en hora Madrid (CEST=UTC+2) para consulta de timeline
+      // Calculado dinámicamente para soportar cambio de horario invierno/verano
+      const madridMidnightTs = (() => {
+        const now = new Date();
+        const madridTimeStr = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+        }).format(now);
+        const [hh, mm, ss] = madridTimeStr.split(':').map(Number);
+        return now.getTime() - (hh * 3600 + mm * 60 + ss) * 1000;
+      })();
+
       // Obtener hora de inicio y fin de jornada de conductores de plantilla via selTimeline
       const plantillaIds = rawDrivers
         .filter(d => matchesPlantilla(d.name || d.alias, plantillaNames) && d.driverId)
@@ -1240,15 +1251,18 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
       const timelineMap = {}; // driverId → { horaInicio, horaFin }
       await Promise.allSettled(
         plantillaIds.map(driverId =>
-          wemob.selTimeline(idSession, driverId, initTs)
+          wemob.selTimeline(idSession, driverId, madridMidnightTs)
             .then(entries => {
               if (!entries.length) return;
-              const first = entries[0];
+              // Inicio jornada = primer evento de conducción (state=4), igual que WeMob portal
+              // Si no hay conducción, primer evento de trabajo (state=1)
+              const firstDrive  = entries.find(e => e.state === 4);
+              const firstActive = firstDrive || entries.find(e => e.state === 1);
               const last  = entries[entries.length - 1];
               const ahora = Date.now();
               timelineMap[driverId] = {
-                horaInicio: first.startMs || null,
-                // Si el último bloque terminó hace menos de 5 min → sigue activo
+                horaInicio: firstActive ? firstActive.startMs : null,
+                // Sin chip de fin si el último bloque terminó hace menos de 5 min (sigue activo)
                 horaFin: (last.endMs && (ahora - last.endMs) > 5 * 60 * 1000) ? last.endMs : null,
               };
             })
