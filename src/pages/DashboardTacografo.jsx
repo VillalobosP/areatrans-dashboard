@@ -10,8 +10,7 @@ const MAX_COND_CONTINUA  = 4.5  * 3600;  // 4 h 30 min sin pausa
 const WARN_CONTINUA_1    = 3.5  * 3600;  // aviso a las 3 h 30 min
 const WARN_CONTINUA_2    = 4    * 3600;  // aviso urgente a las 4 h
 const MIN_DESCANSO_DIA   = 11   * 3600;  // descanso diario mínimo
-const MAX_DESCANSO_SEM   = 45   * 3600;  // descanso semanal normal
-const WARN_DESCANSO_SEM  = 24   * 3600;  // reducido (solo 2×/2 semanas)
+const WARN_DESCANSO_SEM  = 24   * 3600;  // descanso semanal reducido (solo 2×/2 semanas)
 const WARN_DISPONIBLE    = 2    * 3600;  // queda menos de 2 h de conducción
 
 const ESTADOS_LABEL = {
@@ -118,13 +117,6 @@ function calcSituacion(d, esHoy) {
     detalle: `Le quedan ${fmtSeg(restanteCond)} de las 9 h diarias. Ten en cuenta el trayecto de vuelta.`,
     color: '#eab308', bg: '#2a2000', emoji: '🟡',
   };
-  if (esHoy && d.weekDrivingRest != null && d.weekDrivingRest < MAX_DESCANSO_SEM) return {
-    nivel: 'aviso',
-    titulo: 'Descanso semanal inferior al normal',
-    detalle: `Le quedan ${fmtSeg(d.weekDrivingRest)} de descanso semanal (mínimo ideal: 45 h).`,
-    color: '#eab308', bg: '#2a2000', emoji: '🟡',
-  };
-
   // ── OK ────────────────────────────────────────────────────────────────────
   const restante = esHoy ? Math.max(0, MAX_COND_DIARIA - d.drivingTime) : 0;
   const puedeConducir = esHoy && haConducidoHoy && restante > 0
@@ -402,7 +394,7 @@ function TarjetaConductor({ d, expanded, onToggle, esHoy, centro }) {
             <BloqueDetalle titulo="Descansos reglamentarios">
               {d.weekDrivingRest != null && (
                 <LineaDetalle label="Descanso semanal restante" valor={fmtSeg(d.weekDrivingRest)}
-                  alerta={d.weekDrivingRest < WARN_DESCANSO_SEM} ok={d.weekDrivingRest >= MAX_DESCANSO_SEM}
+                  alerta={d.weekDrivingRest < WARN_DESCANSO_SEM} ok={d.weekDrivingRest >= WARN_DESCANSO_SEM}
                   nota="Mín. reglamentario: 45 h (reducido: 24 h)" />
               )}
               {d.twoWeekDrivingRest != null && (
