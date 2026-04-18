@@ -1281,9 +1281,17 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
       const plantillaDrivers = allDriverList.filter(d =>
         matchesPlantilla(d.fullName || d.alias, plantillaNames)
       );
-      // Rango de timestamps para el día solicitado (medianoche a 23:59:59 UTC)
-      const initTs = new Date(`${fecha}T00:00:00Z`).getTime();
-      const endTs  = new Date(`${fecha}T23:59:59Z`).getTime();
+      // Rango de timestamps para el día solicitado en hora Madrid
+      // Spain: CEST (UTC+2) de último domingo de marzo a último domingo de octubre, CET (UTC+1) el resto
+      const madridOffset = (() => {
+        const d = new Date(`${fecha}T12:00:00Z`);
+        const m = d.getUTCMonth() + 1;
+        if (m >= 4 && m <= 9) return '+02:00';   // April–September: CEST
+        if (m === 3 || m === 10) return '+02:00'; // March/Oct: approximate CEST (close enough)
+        return '+01:00';                           // Nov–Feb: CET
+      })();
+      const initTs = new Date(`${fecha}T00:00:00${madridOffset}`).getTime();
+      const endTs  = new Date(`${fecha}T23:59:59${madridOffset}`).getTime();
 
       // Obtener grid de vehículos (asignaciones actuales) para km/velocidad históricos
       // Usamos drvAlias del grid para relacionar conductor → vehículo
@@ -1318,6 +1326,18 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
                 maxSpeedHoy = resume.maxSpeed || 0;
               } catch (_) {}
             }
+            // Inicio/fin de jornada desde selTimeline
+            let horaInicio = null, horaFin = null;
+            try {
+              const timeline = await wemob.selTimeline(idSession, d.idDriver, initTs);
+              if (timeline.length) {
+                const firstDrive  = timeline.find(e => e.state === 4);
+                const firstActive = firstDrive || timeline.find(e => e.state === 1);
+                const last = timeline[timeline.length - 1];
+                horaInicio = firstActive ? firstActive.startMs : null;
+                horaFin    = last.endMs && last.endMs < endTs ? last.endMs : null;
+              }
+            } catch (_) {}
             return {
               driverId:   d.idDriver,
               name:       d.fullName,
@@ -1326,6 +1346,8 @@ app.get('/api/:centro/tacografo', requireCentroAccess, async (req, res) => {
               ...times,
               kmHoy,
               maxSpeedHoy,
+              horaInicio,
+              horaFin,
               actualState: null,
               continousDriving: null,
               weekDrivingRest: null,

@@ -117,6 +117,12 @@ function calcSituacion(d, esHoy) {
     detalle: `Le quedan ${fmtSeg(restanteCond)} de las 9 h diarias. Ten en cuenta el trayecto de vuelta.`,
     color: '#eab308', bg: '#2a2000', emoji: '🟡',
   };
+  if (esHoy && d.weekDrivingRest != null && d.weekDrivingRest > 0 && d.weekDrivingRest < 45 * 3600) return {
+    nivel: 'aviso',
+    titulo: 'Descanso semanal inferior al normal',
+    detalle: `Le quedan ${fmtSeg(d.weekDrivingRest)} de descanso semanal (mínimo reglamentario: 45 h, reducido: 24 h).`,
+    color: '#eab308', bg: '#2a2000', emoji: '🟡',
+  };
   // ── OK ────────────────────────────────────────────────────────────────────
   const restante = esHoy ? Math.max(0, MAX_COND_DIARIA - d.drivingTime) : 0;
   const puedeConducir = esHoy && haConducidoHoy && restante > 0
