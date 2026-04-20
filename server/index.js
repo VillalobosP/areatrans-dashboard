@@ -712,13 +712,24 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
 
     // ── Procesar PLANTILLA ───────────────────────────────────────────────────
     const plantillaMap = {};
+    // Mapa nombre_normalizado → nombre_canónico (tal como aparece en PLANTILLA)
+    const normToCanonical = {};
     if (rawP.length > 1) {
       rawP.slice(1).forEach(row => {
         const emp  = (row[0] || '').trim();
         const dias = (row[1] || '').trim().split(',').map(d => d.trim().toUpperCase()).filter(Boolean);
         const hd   = parseFloat(row[2]) || 8;
-        if (emp) plantillaMap[emp] = { diasSemana: new Set(dias), horasDia: hd };
+        if (emp) {
+          plantillaMap[emp] = { diasSemana: new Set(dias), horasDia: hd };
+          normToCanonical[normName(emp)] = emp;
+        }
       });
+    }
+
+    // Resuelve el nombre canónico de plantilla para un nombre de fichaje
+    // Si no está en plantilla, devuelve el nombre original
+    function canonicalName(n) {
+      return normToCanonical[normName(n)] || n;
     }
 
     // ── Procesar INCIDENCIAS ─────────────────────────────────────────────────
@@ -763,7 +774,7 @@ app.get('/api/:centro/horas', requireCentroAccess, async (req, res) => {
 
     const grupos = {};
     raw.slice(1).forEach(row => {
-      const empleado   = (row[iEmpleado]   || '').trim();
+      const empleado   = canonicalName((row[iEmpleado] || '').trim());
       const fechaRaw   = (row[iFecha]      || '').trim();
       const hora       = (row[iHora]       || '').trim();
       const es         = (row[iES]         || '').trim().toUpperCase();
