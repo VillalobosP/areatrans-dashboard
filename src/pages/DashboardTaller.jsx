@@ -224,8 +224,6 @@ export default function DashboardTaller({ centro, refreshKey = 0 }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (refreshKey > 0) cargar(); }, [refreshKey]);
 
-  const t = { bg: '#1a1a1a', fg: '#e2e8f0', border: '#2a2a2a' };
-
   if (loading && !data) return (
     <div style={{ padding: 40, textAlign: 'center', color: '#555' }}>Cargando...</div>
   );
