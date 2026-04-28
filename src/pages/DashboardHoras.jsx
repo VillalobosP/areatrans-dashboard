@@ -374,7 +374,7 @@ function generarPDF(empleado, desde, hasta, dias, data) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(120, 120, 120);
-  doc.text(`Periodo: ${desde} — ${hasta}`, margin + 4, y + 16);
+  doc.text(`Periodo: ${desde} - ${hasta}`, margin + 4, y + 16);
   y += 28;
 
   // Recopilar incidencias
@@ -412,7 +412,7 @@ function generarPDF(empleado, desde, hasta, dias, data) {
       incumplimientosDescanso.push({
         dia: etiquetaDia,
         desc: DESC_LABEL[d.flag] || d.flag,
-        horario: d.inicio ? `${d.inicio}${d.fin ? ' → ' + d.fin : ''}` : '—',
+        horario: d.inicio ? `${d.inicio}${d.fin ? ' - ' + d.fin : ''}` : '-',
       });
     }
   });
@@ -453,7 +453,7 @@ function generarPDF(empleado, desde, hasta, dias, data) {
       doc.setTextColor(e.tipo.includes('salida') ? 248 : 96, e.tipo.includes('salida') ? 113 : 165, e.tipo.includes('salida') ? 133 : 250);
       doc.text(e.tipo, margin + 55, y + 5);
       doc.setTextColor(180, 180, 180);
-      doc.text(e.hora || '—', margin + 130, y + 5);
+      doc.text(e.hora || '-', margin + 130, y + 5);
       y += 7;
     });
     y += 6;
@@ -483,7 +483,7 @@ function generarPDF(empleado, desde, hasta, dias, data) {
       doc.setTextColor(248, 113, 113);
       doc.text(a.dia, margin + 2, y + 5);
       doc.setTextColor(150, 80, 80);
-      doc.text('No fichó — tocaba trabajar', margin + 40, y + 5);
+      doc.text('No ficho - tocaba trabajar', margin + 40, y + 5);
       y += 7;
     });
   }
