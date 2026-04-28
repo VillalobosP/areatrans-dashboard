@@ -1481,7 +1481,7 @@ app.get('/api/:centro/taller', requireCentroAccess, async (req, res) => {
         const fechaSalida    = parseFecha(g(21));
         const quienRecogió   = g(22);
 
-        const diasEspera = diffDays(fechaSolicitud, fechaEntrada);
+        const diasEspera = diffDays(fechaSolicitud, fechaEntrada || today);
         const diasTaller = fechaEntrada
           ? diffDays(fechaEntrada, fechaSalida || today)
           : null;
@@ -1490,7 +1490,7 @@ app.get('/api/:centro/taller', requireCentroAccess, async (req, res) => {
           matricula, fase, fechaSolicitud, taller,
           fechaEntrada, quienLlevo, motivo, obsSolicitud,
           fechaSalida, quienRecogió,
-          diasEspera: (diasEspera != null && diasEspera >= 0) ? diasEspera : null,
+          diasEspera: (diasEspera != null && diasEspera >= 0) ? diasEspera : 0,
           diasTaller: (diasTaller != null && diasTaller >= 0) ? diasTaller : null,
         };
       })

@@ -3,202 +3,209 @@ import { getTaller } from '../services/api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtFecha(iso) {
-  if (!iso) return null;
+  if (!iso) return '—';
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
 }
 
 function diasLabel(n) {
-  if (n == null) return null;
-  return n === 0 ? '0 días' : n === 1 ? '1 día' : `${n} días`;
+  if (n == null) return '—';
+  if (n === 0) return '0d';
+  if (n === 1) return '1d';
+  return `${n}d`;
+}
+
+// ── Cálculo de rangos de período ──────────────────────────────────────────────
+function getPeriodRange(periodo) {
+  const now = new Date();
+  const y   = now.getFullYear();
+  const m   = now.getMonth(); // 0-based
+  const pad = n => String(n).padStart(2, '0');
+  const todayStr = now.toISOString().slice(0, 10);
+
+  if (periodo === 'semana') {
+    const dow   = now.getDay() || 7; // Lun=1...Dom=7
+    const lunes = new Date(now);
+    lunes.setDate(now.getDate() - dow + 1);
+    return { desde: lunes.toISOString().slice(0, 10), hasta: todayStr };
+  }
+  if (periodo === 'quincena') {
+    const dia   = now.getDate();
+    const desde = dia <= 15
+      ? `${y}-${pad(m + 1)}-01`
+      : `${y}-${pad(m + 1)}-16`;
+    return { desde, hasta: todayStr };
+  }
+  if (periodo === 'mes') {
+    return { desde: `${y}-${pad(m + 1)}-01`, hasta: todayStr };
+  }
+  if (periodo === 'mesAnterior') {
+    const pm      = m === 0 ? 11 : m - 1;
+    const py      = m === 0 ? y - 1 : y;
+    const lastDay = new Date(y, m, 0).getDate();
+    return {
+      desde: `${py}-${pad(pm + 1)}-01`,
+      hasta: `${py}-${pad(pm + 1)}-${lastDay}`,
+    };
+  }
+  return { desde: null, hasta: null }; // 'todo'
+}
+
+function labelPeriodo(periodo) {
+  const { desde, hasta } = getPeriodRange(periodo);
+  if (!desde) return 'Todo el historial';
+  return `${fmtFecha(desde)} - ${fmtFecha(hasta)}`;
 }
 
 // ── Estado de cada registro ───────────────────────────────────────────────────
 function getEstado(r) {
-  if (!r.fechaEntrada) return { label: 'Pendiente llevar', color: '#eab308', bg: '#2a2000', dot: '#eab308' };
-  if (!r.fechaSalida)  return { label: 'En taller',        color: '#f87171', bg: '#2a0808', dot: '#f87171' };
-  return                      { label: 'Completado',        color: '#4ade80', bg: '#071a10', dot: '#4ade80' };
+  if (!r.fechaEntrada) return { label: 'Pendiente llevar', color: '#eab308', bg: '#2a2000' };
+  if (!r.fechaSalida)  return { label: 'En taller',        color: '#f87171', bg: '#2a0808' };
+  return                      { label: 'Completado',        color: '#4ade80', bg: '#071a10' };
 }
 
-// ── Componente tarjeta KPI ────────────────────────────────────────────────────
-function KPI({ label, value, sub, color = '#4da6ff', warn = false }) {
+// ── KPI card ──────────────────────────────────────────────────────────────────
+function KPI({ label, value, sub, color = '#4da6ff', warn = false, big = false }) {
   return (
     <div style={{
-      background: warn ? '#1a0e00' : '#1a1a1a',
-      border: `1px solid ${warn ? color + '66' : '#2a2a2a'}`,
-      borderRadius: 12, padding: '16px 20px', minWidth: 140, flex: 1,
+      background: warn ? '#1a0e00' : '#161616',
+      border:     `1px solid ${warn ? color + '55' : '#242424'}`,
+      borderRadius: 12, padding: '16px 20px',
+      flex: big ? '1 1 180px' : '1 1 130px',
     }}>
-      <div style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1 }}>{value ?? '—'}</div>
-      <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>{label}</div>
-      {sub && <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>{sub}</div>}
+      <div style={{ fontSize: big ? 32 : 26, fontWeight: 800, color, lineHeight: 1 }}>
+        {value ?? '—'}
+      </div>
+      <div style={{ fontSize: 11, color: '#888', marginTop: 5, lineHeight: 1.3 }}>{label}</div>
+      {sub && <div style={{ fontSize: 10, color: '#555', marginTop: 3 }}>{sub}</div>}
     </div>
   );
 }
 
-// ── Chip inline ───────────────────────────────────────────────────────────────
-function Chip({ label, value, color, bg }) {
-  if (!value) return null;
+// ── Celda de días (con semáforo de color) ─────────────────────────────────────
+function CeldaDias({ dias, tipo, esActivo }) {
+  if (dias == null) return <td style={tdStyle}><span style={{ color: '#444' }}>—</span></td>;
+  let color = tipo === 'espera' ? '#fb923c' : '#60a5fa';
+  if (esActivo) color = tipo === 'espera' ? '#fb923c' : '#f87171';
+  const bg = esActivo ? (tipo === 'espera' ? '#1e1000' : '#1e0808') : '#0d1520';
   return (
-    <span style={{
-      display: 'inline-flex', gap: 4, alignItems: 'center',
-      background: bg || '#1e1e1e', border: `1px solid ${color}44`,
-      borderRadius: 6, padding: '2px 8px', fontSize: 11, color,
-    }}>
-      <span style={{ color: '#666', fontSize: 10 }}>{label}</span>
-      <strong>{value}</strong>
-    </span>
+    <td style={tdStyle}>
+      <span style={{
+        background: bg, border: `1px solid ${color}44`,
+        borderRadius: 6, padding: '3px 9px',
+        color, fontWeight: 700, fontSize: 13,
+        display: 'inline-block',
+      }}>
+        {diasLabel(dias)}
+        {esActivo && <span style={{ fontSize: 9, marginLeft: 3, opacity: 0.7 }}>↑hoy</span>}
+      </span>
+    </td>
   );
 }
 
-// ── Tarjeta de registro ───────────────────────────────────────────────────────
-function TarjetaTaller({ r }) {
-  const [open, setOpen] = useState(false);
-  const estado = getEstado(r);
+// ── Estilos de tabla ──────────────────────────────────────────────────────────
+const thStyle = {
+  padding: '8px 12px', textAlign: 'left',
+  fontSize: 10, color: '#555', fontWeight: 600,
+  textTransform: 'uppercase', letterSpacing: '0.07em',
+  borderBottom: '1px solid #242424', whiteSpace: 'nowrap',
+};
+const tdStyle = {
+  padding: '9px 12px', fontSize: 12, color: '#ccc',
+  borderBottom: '1px solid #1e1e1e', verticalAlign: 'middle',
+};
+
+// ── Fila de registro ──────────────────────────────────────────────────────────
+function FilaRegistro({ r }) {
+  const estado    = getEstado(r);
+  const esActivo  = !r.fechaSalida;
+  const esPendiente = !r.fechaEntrada;
 
   return (
-    <div style={{
-      background: '#161616', border: '1px solid #272727', borderRadius: 10,
-      overflow: 'hidden', marginBottom: 8,
-    }}>
-      {/* Cabecera clickable */}
-      <div
-        onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-          cursor: 'pointer', flexWrap: 'wrap',
-        }}
-      >
-        {/* Matricula */}
+    <tr style={{ transition: 'background 0.15s' }}
+      onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+
+      {/* Matrícula */}
+      <td style={tdStyle}>
         <span style={{
-          fontFamily: 'monospace', fontWeight: 800, fontSize: 15, color: '#e2e8f0',
-          background: '#222', border: '1px solid #333', borderRadius: 6,
-          padding: '3px 10px', letterSpacing: '0.05em', minWidth: 90, textAlign: 'center',
+          fontFamily: 'monospace', fontWeight: 800, fontSize: 13,
+          background: '#1e1e1e', border: '1px solid #2e2e2e',
+          borderRadius: 5, padding: '3px 8px', color: '#e2e8f0',
+          display: 'inline-block',
         }}>
           {r.matricula}
         </span>
+      </td>
 
-        {/* Estado badge */}
+      {/* Estado */}
+      <td style={tdStyle}>
         <span style={{
-          background: estado.bg, border: `1px solid ${estado.color}55`,
-          color: estado.color, borderRadius: 20, fontSize: 11, fontWeight: 600,
-          padding: '3px 10px', whiteSpace: 'nowrap',
+          background: estado.bg, border: `1px solid ${estado.color}44`,
+          color: estado.color, borderRadius: 20, fontSize: 10, fontWeight: 600,
+          padding: '3px 9px', whiteSpace: 'nowrap', display: 'inline-block',
         }}>
-          <span style={{ marginRight: 5, fontSize: 8 }}>●</span>
           {estado.label}
         </span>
+      </td>
 
-        {/* Taller */}
-        {r.taller && (
-          <span style={{ fontSize: 12, color: '#888', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {r.taller}
-          </span>
-        )}
+      {/* Fecha solicitud */}
+      <td style={{ ...tdStyle, color: '#a78bfa' }}>{fmtFecha(r.fechaSolicitud)}</td>
 
-        {/* Chips días */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 'auto' }}>
-          {r.diasEspera != null && (
-            <Chip label="Sin sustitución" value={diasLabel(r.diasEspera)} color="#fb923c" bg="#1e1000" />
-          )}
-          {r.diasTaller != null && (
-            <Chip
-              label={r.fechaSalida ? 'En taller' : 'Lleva en taller'}
-              value={diasLabel(r.diasTaller)}
-              color={r.fechaSalida ? '#60a5fa' : '#f87171'}
-              bg={r.fechaSalida ? '#0d1a2a' : '#1e0808'}
-            />
-          )}
-        </div>
+      {/* Días sin sustitución */}
+      <CeldaDias dias={r.diasEspera} tipo="espera" esActivo={esPendiente} />
 
-        <span style={{ color: '#444', fontSize: 14 }}>{open ? '▲' : '▼'}</span>
-      </div>
+      {/* Fecha entrada */}
+      <td style={{ ...tdStyle, color: r.fechaEntrada ? '#fb923c' : '#333' }}>
+        {fmtFecha(r.fechaEntrada)}
+      </td>
 
-      {/* Detalle expandido */}
-      {open && (
-        <div style={{
-          borderTop: '1px solid #222', padding: '12px 14px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px 16px',
-          fontSize: 12,
-        }}>
-          {/* Línea temporal */}
-          <div style={{ gridColumn: '1 / -1', marginBottom: 4 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <FechaStep label="Solicitud" fecha={r.fechaSolicitud} color="#a78bfa" />
-              {r.diasEspera != null && (
-                <Arrow label={`${diasLabel(r.diasEspera)} sin sustitución`} color="#fb923c" />
-              )}
-              <FechaStep label="Entrada" fecha={r.fechaEntrada} color="#fb923c" sub={r.quienLlevo} />
-              {r.diasTaller != null && (
-                <Arrow label={diasLabel(r.diasTaller)} color={r.fechaSalida ? '#60a5fa' : '#f87171'} />
-              )}
-              {r.fechaSalida && <FechaStep label="Salida" fecha={r.fechaSalida} color="#4ade80" sub={r.quienRecogió} />}
-            </div>
-          </div>
+      {/* Días en taller */}
+      <CeldaDias dias={r.diasTaller} tipo="taller" esActivo={esActivo && !!r.fechaEntrada} />
 
-          {/* Campos adicionales */}
-          {r.motivo && (
-            <Field label="Motivo" value={r.motivo} span />
-          )}
-          {r.obsSolicitud && (
-            <Field label="Observaciones" value={r.obsSolicitud} span />
-          )}
-        </div>
-      )}
-    </div>
+      {/* Fecha salida */}
+      <td style={{ ...tdStyle, color: r.fechaSalida ? '#4ade80' : '#333' }}>
+        {fmtFecha(r.fechaSalida)}
+      </td>
+
+      {/* Taller */}
+      <td style={{ ...tdStyle, color: '#888', maxWidth: 180 }}>
+        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {r.taller || '—'}
+        </span>
+      </td>
+
+      {/* Motivo (abreviado) */}
+      <td style={{ ...tdStyle, color: '#555', maxWidth: 200 }}>
+        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              title={r.motivo}>
+          {r.motivo || '—'}
+        </span>
+      </td>
+    </tr>
   );
 }
 
-function FechaStep({ label, fecha, color, sub }) {
-  return (
-    <div style={{ textAlign: 'center', minWidth: 70 }}>
-      <div style={{ fontSize: 10, color: '#666', marginBottom: 2 }}>{label}</div>
-      <div style={{
-        background: '#1e1e1e', border: `1px solid ${color}55`,
-        borderRadius: 6, padding: '4px 8px', color, fontWeight: 700, fontSize: 13,
-      }}>
-        {fecha ? fmtFecha(fecha) : '—'}
-      </div>
-      {sub && <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>{sub}</div>}
-    </div>
-  );
-}
-
-function Arrow({ label, color }) {
-  return (
-    <div style={{ textAlign: 'center', color, fontSize: 10 }}>
-      <div>- {label} -</div>
-      <div style={{ fontSize: 16 }}>&#8594;</div>
-    </div>
-  );
-}
-
-function Field({ label, value, span }) {
-  return (
-    <div style={{ gridColumn: span ? '1 / -1' : undefined }}>
-      <div style={{ fontSize: 10, color: '#555', marginBottom: 2 }}>{label}</div>
-      <div style={{ color: '#bbb', lineHeight: 1.4 }}>{value}</div>
-    </div>
-  );
-}
-
-// ── Flota (listado de camiones del centro) ────────────────────────────────────
+// ── Flota registrada ──────────────────────────────────────────────────────────
 function TablaFlota({ camiones }) {
   if (!camiones?.length) return null;
   return (
     <div style={{ marginTop: 32 }}>
-      <h3 style={{ color: '#888', fontSize: 13, fontWeight: 600, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+      <div style={{ fontSize: 11, color: '#555', fontWeight: 600, textTransform: 'uppercase',
+                    letterSpacing: '0.08em', marginBottom: 10 }}>
         Flota registrada
-      </h3>
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         {camiones.map(c => (
           <div key={c.matricula} style={{
-            background: '#161616', border: '1px solid #272727', borderRadius: 8,
-            padding: '10px 14px', minWidth: 160,
+            background: '#161616', border: '1px solid #242424', borderRadius: 8,
+            padding: '10px 14px', minWidth: 150,
           }}>
             <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 14, color: '#e2e8f0' }}>
               {c.matricula}
             </div>
             <div style={{ fontSize: 11, color: '#666', marginTop: 3 }}>{c.tipo}</div>
-            <div style={{ fontSize: 11, color: '#555', marginTop: 1 }}>{c.proveedor}</div>
+            <div style={{ fontSize: 10, color: '#444', marginTop: 2 }}>{c.proveedor}</div>
           </div>
         ))}
       </div>
@@ -211,7 +218,8 @@ export default function DashboardTaller({ centro, refreshKey = 0 }) {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
-  const [filtro,  setFiltro]  = useState('todos'); // 'todos' | 'activos' | 'pendiente' | 'completados'
+  const [periodo, setPeriodo] = useState('mes');
+  const [filtroEstado, setFiltroEstado] = useState('todos');
 
   const cargar = useCallback(async () => {
     setLoading(true); setError(null);
@@ -234,19 +242,52 @@ export default function DashboardTaller({ centro, refreshKey = 0 }) {
 
   const { registros, camiones, kpis } = data;
 
-  // Filtrado
-  const registrosFiltrados = registros.filter(r => {
-    if (filtro === 'activos')     return r.fechaEntrada && !r.fechaSalida;
-    if (filtro === 'pendiente')   return !r.fechaEntrada;
-    if (filtro === 'completados') return r.fase === 'completada';
+  // ── Filtro por período ─────────────────────────────────────────────────────
+  const { desde, hasta } = getPeriodRange(periodo);
+  const enPeriodo = registros.filter(r => {
+    const f = r.fechaSolicitud;
+    if (!f) return true;
+    if (desde && f < desde) return false;
+    if (hasta && f > hasta) return false;
     return true;
   });
 
+  // ── Totales del período ────────────────────────────────────────────────────
+  const totalDiasTaller  = enPeriodo.reduce((s, r) => s + (r.diasTaller  ?? 0), 0);
+  const totalDiasEspera  = enPeriodo.reduce((s, r) => s + (r.diasEspera  ?? 0), 0);
+  const conDiasTaller    = enPeriodo.filter(r => r.diasTaller != null && r.fechaEntrada && r.fechaSalida);
+  const mediaTaller      = conDiasTaller.length
+    ? Math.round(conDiasTaller.reduce((s, r) => s + r.diasTaller, 0) / conDiasTaller.length * 10) / 10
+    : null;
+
+  // ── Filtro por estado ──────────────────────────────────────────────────────
+  const registrosFiltrados = enPeriodo.filter(r => {
+    if (filtroEstado === 'activos')     return r.fechaEntrada && !r.fechaSalida;
+    if (filtroEstado === 'pendiente')   return !r.fechaEntrada;
+    if (filtroEstado === 'completados') return r.fase === 'completada';
+    return true;
+  });
+
+  const PERIODOS = [
+    { id: 'semana',      label: 'Esta semana' },
+    { id: 'quincena',    label: 'Esta quincena' },
+    { id: 'mes',         label: 'Este mes' },
+    { id: 'mesAnterior', label: 'Mes anterior' },
+    { id: 'todo',        label: 'Todo' },
+  ];
+
+  const ESTADOS = [
+    { id: 'todos',       label: `Todos (${enPeriodo.length})` },
+    { id: 'activos',     label: `En taller (${kpis.enTaller})`,              color: '#f87171' },
+    { id: 'pendiente',   label: `Pendiente llevar (${kpis.pendienteLlevar})`, color: '#eab308' },
+    { id: 'completados', label: `Completados (${kpis.completados})`,          color: '#4ade80' },
+  ];
+
   return (
-    <div style={{ padding: '24px 20px', maxWidth: 900, margin: '0 auto' }}>
+    <div style={{ padding: '24px 20px', maxWidth: 1100, margin: '0 auto' }}>
 
       {/* ── KPIs ── */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
         <KPI
           label="En taller ahora"
           value={kpis.enTaller}
@@ -259,65 +300,110 @@ export default function DashboardTaller({ centro, refreshKey = 0 }) {
           value={kpis.pendienteLlevar}
           color={kpis.pendienteLlevar > 0 ? '#eab308' : '#4ade80'}
           warn={kpis.pendienteLlevar > 0}
-          sub="Solicitud abierta, sin entrada"
+          sub="Solicitud abierta sin entrada"
         />
-        <KPI
-          label="Total visitas"
-          value={kpis.totalRegistros}
-          color="#a78bfa"
-          sub="Registros en el sistema"
-        />
-        {kpis.mediaTaller != null && (
+        {mediaTaller != null && (
           <KPI
             label="Media dias en taller"
-            value={`${kpis.mediaTaller}d`}
+            value={`${mediaTaller}d`}
             color="#60a5fa"
-            sub="Por visita completada"
+            sub="Por visita completada en periodo"
           />
         )}
-        {kpis.mediaEspera != null && (
-          <KPI
-            label="Media sin sustitución"
-            value={`${kpis.mediaEspera}d`}
-            color="#fb923c"
-            warn={kpis.mediaEspera > 2}
-            sub="Solicitud hasta entrada"
-          />
-        )}
+        <KPI
+          label="Total dias en taller"
+          value={`${totalDiasTaller}d`}
+          color="#f87171"
+          warn={totalDiasTaller > 0}
+          big
+          sub={`Suma de todos los registros · ${labelPeriodo(periodo)}`}
+        />
+        <KPI
+          label="Total dias sin sustitución"
+          value={`${totalDiasEspera}d`}
+          color="#fb923c"
+          warn={totalDiasEspera > 0}
+          big
+          sub={`Días esperando para llevar al taller · ${labelPeriodo(periodo)}`}
+        />
       </div>
 
-      {/* ── Filtros ── */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {[
-          { id: 'todos',       label: `Todos (${registros.length})` },
-          { id: 'activos',     label: `En taller (${kpis.enTaller})`,          color: '#f87171' },
-          { id: 'pendiente',   label: `Pendiente llevar (${kpis.pendienteLlevar})`, color: '#eab308' },
-          { id: 'completados', label: `Completados (${kpis.completados})`,      color: '#4ade80' },
-        ].map(f => (
-          <button
-            key={f.id}
-            onClick={() => setFiltro(f.id)}
-            style={{
-              background: filtro === f.id ? '#1e1e2e' : 'transparent',
-              border: `1px solid ${filtro === f.id ? (f.color || '#4da6ff') : '#333'}`,
-              borderRadius: 20, color: filtro === f.id ? (f.color || '#4da6ff') : '#666',
-              fontSize: 12, fontWeight: 600, padding: '5px 14px', cursor: 'pointer',
-            }}
-          >
-            {f.label}
+      {/* ── Filtro por período ── */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: '#555', marginRight: 4 }}>Período:</span>
+        {PERIODOS.map(p => (
+          <button key={p.id} onClick={() => setPeriodo(p.id)} style={{
+            background:  periodo === p.id ? '#1e2030' : 'transparent',
+            border:      `1px solid ${periodo === p.id ? '#4da6ff88' : '#2e2e2e'}`,
+            borderRadius: 16, color: periodo === p.id ? '#4da6ff' : '#555',
+            fontSize: 11, fontWeight: 600, padding: '4px 12px', cursor: 'pointer',
+          }}>
+            {p.label}
           </button>
         ))}
       </div>
 
-      {/* ── Lista de registros ── */}
+      {/* ── Filtro por estado ── */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: '#555', marginRight: 4 }}>Estado:</span>
+        {ESTADOS.map(e => (
+          <button key={e.id} onClick={() => setFiltroEstado(e.id)} style={{
+            background:  filtroEstado === e.id ? '#1e1e2e' : 'transparent',
+            border:      `1px solid ${filtroEstado === e.id ? (e.color || '#4da6ff') + '88' : '#2e2e2e'}`,
+            borderRadius: 16, color: filtroEstado === e.id ? (e.color || '#4da6ff') : '#555',
+            fontSize: 11, fontWeight: 600, padding: '4px 12px', cursor: 'pointer',
+          }}>
+            {e.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tabla de registros ── */}
       {registrosFiltrados.length === 0 ? (
-        <div style={{ color: '#555', fontSize: 13, padding: '20px 0' }}>
+        <div style={{ color: '#444', fontSize: 13, padding: '20px 0' }}>
           No hay registros para este filtro.
         </div>
       ) : (
-        registrosFiltrados.map((r, i) => (
-          <TarjetaTaller key={`${r.matricula}-${r.fechaSolicitud}-${i}`} r={r} />
-        ))
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#111' }}>
+                <th style={thStyle}>Matrícula</th>
+                <th style={thStyle}>Estado</th>
+                <th style={thStyle}>Solicitud</th>
+                <th style={{ ...thStyle, color: '#fb923c' }}>Sin sustitución</th>
+                <th style={thStyle}>Entrada taller</th>
+                <th style={{ ...thStyle, color: '#f87171' }}>Días en taller</th>
+                <th style={thStyle}>Salida taller</th>
+                <th style={thStyle}>Taller / Proveedor</th>
+                <th style={thStyle}>Motivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {registrosFiltrados.map((r, i) => (
+                <FilaRegistro key={`${r.matricula}-${r.fechaSolicitud}-${i}`} r={r} />
+              ))}
+            </tbody>
+            {/* Pie con totales del período */}
+            {registrosFiltrados.length > 1 && (
+              <tfoot>
+                <tr style={{ background: '#111', borderTop: '1px solid #2a2a2a' }}>
+                  <td colSpan={3} style={{ ...tdStyle, color: '#555', fontStyle: 'italic' }}>
+                    {registrosFiltrados.length} registros
+                  </td>
+                  <td style={{ ...tdStyle, color: '#fb923c', fontWeight: 700 }}>
+                    {totalDiasEspera}d total
+                  </td>
+                  <td style={tdStyle} />
+                  <td style={{ ...tdStyle, color: '#f87171', fontWeight: 700 }}>
+                    {totalDiasTaller}d total
+                  </td>
+                  <td colSpan={3} style={tdStyle} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
       )}
 
       {/* ── Flota ── */}
