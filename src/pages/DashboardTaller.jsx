@@ -218,7 +218,7 @@ export default function DashboardTaller({ centro, refreshKey = 0 }) {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
-  const [periodo, setPeriodo] = useState('mes');
+  const [periodo, setPeriodo] = useState('todo');
   const [filtroEstado, setFiltroEstado] = useState('todos');
 
   const cargar = useCallback(async () => {
