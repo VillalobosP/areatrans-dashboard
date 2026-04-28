@@ -9,6 +9,7 @@ const CENTROS = {
     id:    'getafe',
     label: 'GETAFE',
     sheetId: '1PloSwT20dFVmF2w-tseaDscnKZ_35a6H9PPgpP6xBOc',
+    tallerSheetId: '1oTEb59m2gmuWKTP1GMO748ljK0T-VBsGEnHRyvonEI0',
     sheets: {
       enrutamiento: 'PRUEBA ENRUTAMIENTO AUTOMATICO GETAFE',
       calendario:   'CALENDARIO',

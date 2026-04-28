@@ -66,3 +66,9 @@ export async function getKmDesviacion(centro, desde, hasta) {
     .catch(err => handleError(err, 'Error al cargar desviación km'));
   return data;
 }
+
+export async function getTaller(centro) {
+  const { data } = await api.get(`/api/${centro}/taller`)
+    .catch(err => handleError(err, 'Error al cargar taller'));
+  return data;
+}

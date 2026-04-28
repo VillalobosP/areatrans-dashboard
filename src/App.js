@@ -14,6 +14,7 @@ import DashboardFlota      from './pages/DashboardFlota';
 import DashboardIllescas   from './pages/DashboardIllescas';
 import DashboardHoras      from './pages/DashboardHoras';
 import DashboardTacografo  from './pages/DashboardTacografo';
+import DashboardTaller     from './pages/DashboardTaller';
 import './index.css';
 
 // ── Etiquetas de centros ───────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ const TABS_BY_CENTRO = {
     { id: 'flota',       label: 'Flota & Gasoil' },
     { id: 'horas',       label: 'Horas' },
     { id: 'tacografo',   label: 'Tacógrafo' },
+    { id: 'taller',      label: 'Taller' },
   ],
   illescas: [
     { id: 'facturacion', label: 'Facturación & Lotes' },
@@ -193,6 +195,7 @@ function DashboardLayout() {
           {tab === 'flota'       && <DashboardFlota        centro={centro} refreshKey={refreshKey} />}
           {tab === 'horas'       && <DashboardHoras        centro={centro} refreshKey={refreshKey} />}
           {tab === 'tacografo'   && <DashboardTacografo    centro={centro} refreshKey={refreshKey} />}
+          {tab === 'taller'      && <DashboardTaller       centro={centro} refreshKey={refreshKey} />}
         </>
       )}
     </div>

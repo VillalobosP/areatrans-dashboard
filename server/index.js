@@ -1428,6 +1428,105 @@ app.get('/api/:centro/tacografo-timeline/:driverId', requireCentroAccess, async 
   }
 });
 
+// ── GET /api/:centro/taller ───────────────────────────────────────────────────
+app.get('/api/:centro/taller', requireCentroAccess, async (req, res) => {
+  if (!req.centro.tallerSheetId) return res.json({ registros: [], camiones: [], kpis: {} });
+  try {
+    const TALLER_ID   = req.centro.tallerSheetId;
+    const centroLabel = req.centro.label.toUpperCase(); // "GETAFE"
+
+    const [rawHoja, rawCamiones] = await Promise.all([
+      fetchSheet(TALLER_ID, 'Hoja 1!A:Z'),
+      fetchSheet(TALLER_ID, 'Camiones!A:E'),
+    ]);
+
+    // Camiones registrados en este centro
+    const camiones = rawCamiones.slice(1)
+      .filter(r => (r[3] || '').toUpperCase() === centroLabel)
+      .map(r => ({
+        matricula:  (r[0] || '').trim().toUpperCase(),
+        proveedor:  (r[1] || '').trim(),
+        cliente:    (r[2] || '').trim(),
+        plataforma: (r[3] || '').trim(),
+        tipo:       (r[4] || '').trim(),
+      }));
+
+    const placasValidas = new Set(camiones.map(c => c.matricula));
+
+    function parseFecha(v) {
+      if (!v) return null;
+      const s = String(v).trim();
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+      if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      return null;
+    }
+    function diffDays(d1, d2) {
+      if (!d1 || !d2) return null;
+      return Math.round((new Date(d2) - new Date(d1)) / 86400000);
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const registros = rawHoja.slice(1)
+      .map(r => {
+        const g = i => (r[i] || '').toString().trim();
+        const matricula      = g(0).toUpperCase();
+        const fase           = g(1).toLowerCase();
+        const fechaSolicitud = parseFecha(g(3));
+        const taller         = g(13);
+        const fechaEntrada   = parseFecha(g(14));
+        const quienLlevo     = g(15);
+        const motivo         = g(11);
+        const obsSolicitud   = g(12);
+        const fechaSalida    = parseFecha(g(21));
+        const quienRecogió   = g(22);
+
+        const diasEspera = diffDays(fechaSolicitud, fechaEntrada);
+        const diasTaller = fechaEntrada
+          ? diffDays(fechaEntrada, fechaSalida || today)
+          : null;
+
+        return {
+          matricula, fase, fechaSolicitud, taller,
+          fechaEntrada, quienLlevo, motivo, obsSolicitud,
+          fechaSalida, quienRecogió,
+          diasEspera: (diasEspera != null && diasEspera >= 0) ? diasEspera : null,
+          diasTaller: (diasTaller != null && diasTaller >= 0) ? diasTaller : null,
+        };
+      })
+      .filter(r => r.matricula && placasValidas.has(r.matricula));
+
+    // KPIs
+    const enTaller        = registros.filter(r => r.fechaEntrada && !r.fechaSalida).length;
+    const pendienteLlevar = registros.filter(r => !r.fechaEntrada).length;
+    const completados     = registros.filter(r => r.fase === 'completada');
+    const conDiasTaller   = completados.filter(r => r.diasTaller != null);
+    const mediaTaller     = conDiasTaller.length
+      ? Math.round(conDiasTaller.reduce((s, r) => s + r.diasTaller, 0) / conDiasTaller.length * 10) / 10
+      : null;
+    const conDiasEspera   = registros.filter(r => r.diasEspera != null);
+    const mediaEspera     = conDiasEspera.length
+      ? Math.round(conDiasEspera.reduce((s, r) => s + r.diasEspera, 0) / conDiasEspera.length * 10) / 10
+      : null;
+
+    res.json({
+      registros: registros.sort((a, b) => (b.fechaSolicitud || '').localeCompare(a.fechaSolicitud || '')),
+      camiones,
+      kpis: {
+        enTaller,
+        pendienteLlevar,
+        totalRegistros: registros.length,
+        completados: completados.length,
+        mediaTaller,
+        mediaEspera,
+      },
+    });
+  } catch (err) {
+    console.error(`Error /api/${req.centro.id}/taller:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
