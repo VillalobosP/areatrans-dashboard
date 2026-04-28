@@ -70,14 +70,14 @@ function KPI({ label, value, sub, color = '#4da6ff', warn = false, big = false }
     <div style={{
       background: warn ? '#1a0e00' : '#161616',
       border:     `1px solid ${warn ? color + '55' : '#242424'}`,
-      borderRadius: 12, padding: '16px 20px',
+      borderRadius: 12, padding: '18px 22px',
       flex: big ? '1 1 180px' : '1 1 130px',
     }}>
-      <div style={{ fontSize: big ? 32 : 26, fontWeight: 800, color, lineHeight: 1 }}>
+      <div style={{ fontSize: big ? 38 : 32, fontWeight: 800, color, lineHeight: 1 }}>
         {value ?? '—'}
       </div>
-      <div style={{ fontSize: 11, color: '#888', marginTop: 5, lineHeight: 1.3 }}>{label}</div>
-      {sub && <div style={{ fontSize: 10, color: '#555', marginTop: 3 }}>{sub}</div>}
+      <div style={{ fontSize: 13, color: '#888', marginTop: 6, lineHeight: 1.3 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11, color: '#555', marginTop: 3 }}>{sub}</div>}
     </div>
   );
 }
@@ -92,12 +92,12 @@ function CeldaDias({ dias, tipo, esActivo }) {
     <td style={tdStyle}>
       <span style={{
         background: bg, border: `1px solid ${color}44`,
-        borderRadius: 6, padding: '3px 9px',
-        color, fontWeight: 700, fontSize: 13,
+        borderRadius: 6, padding: '4px 11px',
+        color, fontWeight: 700, fontSize: 15,
         display: 'inline-block',
       }}>
         {diasLabel(dias)}
-        {esActivo && <span style={{ fontSize: 9, marginLeft: 3, opacity: 0.7 }}>↑hoy</span>}
+        {esActivo && <span style={{ fontSize: 11, marginLeft: 4, opacity: 0.75 }}>↑hoy</span>}
       </span>
     </td>
   );
@@ -105,13 +105,13 @@ function CeldaDias({ dias, tipo, esActivo }) {
 
 // ── Estilos de tabla ──────────────────────────────────────────────────────────
 const thStyle = {
-  padding: '8px 12px', textAlign: 'left',
-  fontSize: 10, color: '#555', fontWeight: 600,
+  padding: '10px 14px', textAlign: 'left',
+  fontSize: 12, color: '#555', fontWeight: 600,
   textTransform: 'uppercase', letterSpacing: '0.07em',
   borderBottom: '1px solid #242424', whiteSpace: 'nowrap',
 };
 const tdStyle = {
-  padding: '9px 12px', fontSize: 12, color: '#ccc',
+  padding: '11px 14px', fontSize: 14, color: '#ccc',
   borderBottom: '1px solid #1e1e1e', verticalAlign: 'middle',
 };
 
@@ -129,9 +129,9 @@ function FilaRegistro({ r }) {
       {/* Matrícula */}
       <td style={tdStyle}>
         <span style={{
-          fontFamily: 'monospace', fontWeight: 800, fontSize: 13,
+          fontFamily: 'monospace', fontWeight: 800, fontSize: 15,
           background: '#1e1e1e', border: '1px solid #2e2e2e',
-          borderRadius: 5, padding: '3px 8px', color: '#e2e8f0',
+          borderRadius: 5, padding: '4px 10px', color: '#e2e8f0',
           display: 'inline-block',
         }}>
           {r.matricula}
@@ -142,8 +142,8 @@ function FilaRegistro({ r }) {
       <td style={tdStyle}>
         <span style={{
           background: estado.bg, border: `1px solid ${estado.color}44`,
-          color: estado.color, borderRadius: 20, fontSize: 10, fontWeight: 600,
-          padding: '3px 9px', whiteSpace: 'nowrap', display: 'inline-block',
+          color: estado.color, borderRadius: 20, fontSize: 12, fontWeight: 600,
+          padding: '4px 11px', whiteSpace: 'nowrap', display: 'inline-block',
         }}>
           {estado.label}
         </span>
@@ -191,21 +191,21 @@ function TablaFlota({ camiones }) {
   if (!camiones?.length) return null;
   return (
     <div style={{ marginTop: 32 }}>
-      <div style={{ fontSize: 11, color: '#555', fontWeight: 600, textTransform: 'uppercase',
-                    letterSpacing: '0.08em', marginBottom: 10 }}>
+      <div style={{ fontSize: 13, color: '#555', fontWeight: 600, textTransform: 'uppercase',
+                    letterSpacing: '0.08em', marginBottom: 12 }}>
         Flota registrada
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         {camiones.map(c => (
           <div key={c.matricula} style={{
             background: '#161616', border: '1px solid #242424', borderRadius: 8,
-            padding: '10px 14px', minWidth: 150,
+            padding: '12px 16px', minWidth: 160,
           }}>
-            <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 14, color: '#e2e8f0' }}>
+            <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 16, color: '#e2e8f0' }}>
               {c.matricula}
             </div>
-            <div style={{ fontSize: 11, color: '#666', marginTop: 3 }}>{c.tipo}</div>
-            <div style={{ fontSize: 10, color: '#444', marginTop: 2 }}>{c.proveedor}</div>
+            <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>{c.tipo}</div>
+            <div style={{ fontSize: 12, color: '#444', marginTop: 2 }}>{c.proveedor}</div>
           </div>
         ))}
       </div>
@@ -329,14 +329,14 @@ export default function DashboardTaller({ centro, refreshKey = 0 }) {
       </div>
 
       {/* ── Filtro por período ── */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: '#555', marginRight: 4 }}>Período:</span>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+        <span style={{ fontSize: 13, color: '#555', marginRight: 4 }}>Período:</span>
         {PERIODOS.map(p => (
           <button key={p.id} onClick={() => setPeriodo(p.id)} style={{
             background:  periodo === p.id ? '#1e2030' : 'transparent',
             border:      `1px solid ${periodo === p.id ? '#4da6ff88' : '#2e2e2e'}`,
-            borderRadius: 16, color: periodo === p.id ? '#4da6ff' : '#555',
-            fontSize: 11, fontWeight: 600, padding: '4px 12px', cursor: 'pointer',
+            borderRadius: 16, color: periodo === p.id ? '#4da6ff' : '#666',
+            fontSize: 13, fontWeight: 600, padding: '5px 14px', cursor: 'pointer',
           }}>
             {p.label}
           </button>
@@ -344,14 +344,14 @@ export default function DashboardTaller({ centro, refreshKey = 0 }) {
       </div>
 
       {/* ── Filtro por estado ── */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: '#555', marginRight: 4 }}>Estado:</span>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18, alignItems: 'center' }}>
+        <span style={{ fontSize: 13, color: '#555', marginRight: 4 }}>Estado:</span>
         {ESTADOS.map(e => (
           <button key={e.id} onClick={() => setFiltroEstado(e.id)} style={{
             background:  filtroEstado === e.id ? '#1e1e2e' : 'transparent',
             border:      `1px solid ${filtroEstado === e.id ? (e.color || '#4da6ff') + '88' : '#2e2e2e'}`,
-            borderRadius: 16, color: filtroEstado === e.id ? (e.color || '#4da6ff') : '#555',
-            fontSize: 11, fontWeight: 600, padding: '4px 12px', cursor: 'pointer',
+            borderRadius: 16, color: filtroEstado === e.id ? (e.color || '#4da6ff') : '#666',
+            fontSize: 13, fontWeight: 600, padding: '5px 14px', cursor: 'pointer',
           }}>
             {e.label}
           </button>
