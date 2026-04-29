@@ -15,6 +15,40 @@ function diasLabel(n) {
   return `${n}d`;
 }
 
+function addOneDay(iso) {
+  const d = new Date(iso); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10);
+}
+
+const TODAY = new Date().toISOString().slice(0, 10);
+
+// Días de [start, end) que caen dentro del período [pFrom, pTo] (ambos inclusive).
+// Si end=null → ongoing hasta hoy. Si pFrom/pTo=null → sin recorte.
+function overlapDays(start, end, pFrom, pTo) {
+  if (!start) return 0;
+  const effectiveEnd = end || TODAY;
+  if (!pFrom && !pTo) {
+    return Math.max(0, Math.round((new Date(effectiveEnd) - new Date(start)) / 86400000));
+  }
+  const clipFrom = pFrom || '2000-01-01';
+  const clipTo   = pTo ? addOneDay(pTo) : addOneDay(TODAY); // exclusive upper bound
+  const oStart   = start > clipFrom ? start : clipFrom;
+  const oEnd     = effectiveEnd < clipTo ? effectiveEnd : clipTo;
+  if (oStart >= oEnd) return 0;
+  return Math.round((new Date(oEnd) - new Date(oStart)) / 86400000);
+}
+
+// Un registro "toca" un período si su ventana activa [solicitud, salida||hoy] se
+// solapa con [pFrom, pTo]. Así un registro de mar→abr aparece en ambos meses.
+function recordInPeriod(r, pFrom, pTo) {
+  if (!pFrom && !pTo) return true;
+  const rStart = r.fechaSolicitud;
+  const rEnd   = r.fechaSalida || TODAY;
+  if (!rStart) return true;
+  const clipFrom = pFrom || '2000-01-01';
+  const clipTo   = pTo ? addOneDay(pTo) : addOneDay(TODAY);
+  return rStart < clipTo && rEnd >= clipFrom;
+}
+
 // ── Cálculo de rangos de período ──────────────────────────────────────────────
 function getPeriodRange(periodo) {
   const now = new Date();
@@ -242,21 +276,18 @@ export default function DashboardTaller({ centro, refreshKey = 0 }) {
 
   const { registros, camiones, kpis } = data;
 
-  // ── Filtro por período ─────────────────────────────────────────────────────
+  // ── Filtro por período (intersección, no solo fechaSolicitud) ─────────────
   const { desde, hasta } = getPeriodRange(periodo);
-  const enPeriodo = registros.filter(r => {
-    const f = r.fechaSolicitud;
-    if (!f) return true;
-    if (desde && f < desde) return false;
-    if (hasta && f > hasta) return false;
-    return true;
-  });
+  const enPeriodo = registros.filter(r => recordInPeriod(r, desde, hasta));
 
-  // ── Totales del período ────────────────────────────────────────────────────
-  const totalDiasTaller  = enPeriodo.reduce((s, r) => s + (r.diasTaller  ?? 0), 0);
-  const totalDiasEspera  = enPeriodo.reduce((s, r) => s + (r.diasEspera  ?? 0), 0);
-  const conDiasTaller    = enPeriodo.filter(r => r.diasTaller != null && r.fechaEntrada && r.fechaSalida);
-  const mediaTaller      = conDiasTaller.length
+  // ── Totales del período (solo días que caen dentro del período) ────────────
+  const totalDiasEspera = enPeriodo.reduce((s, r) =>
+    s + overlapDays(r.fechaSolicitud, r.fechaEntrada, desde, hasta), 0);
+  const totalDiasTaller = enPeriodo.reduce((s, r) =>
+    s + (r.fechaEntrada ? overlapDays(r.fechaEntrada, r.fechaSalida, desde, hasta) : 0), 0);
+
+  const conDiasTaller = enPeriodo.filter(r => r.diasTaller != null && r.fechaEntrada && r.fechaSalida);
+  const mediaTaller   = conDiasTaller.length
     ? Math.round(conDiasTaller.reduce((s, r) => s + r.diasTaller, 0) / conDiasTaller.length * 10) / 10
     : null;
 
