@@ -229,17 +229,17 @@ function TablaFlota({ camiones }) {
                     letterSpacing: '0.08em', marginBottom: 12 }}>
         Flota registrada
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
         {camiones.map(c => (
           <div key={c.matricula} style={{
-            background: '#161616', border: '1px solid #242424', borderRadius: 8,
-            padding: '12px 16px', minWidth: 160,
+            background: '#161616', border: '1px solid #2a2a2a', borderRadius: 8,
+            padding: '14px 18px',
           }}>
-            <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 16, color: '#e2e8f0' }}>
+            <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 17, color: '#e2e8f0' }}>
               {c.matricula}
             </div>
-            <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>{c.tipo}</div>
-            <div style={{ fontSize: 12, color: '#444', marginTop: 2 }}>{c.proveedor}</div>
+            <div style={{ fontSize: 13, color: '#bbb', fontWeight: 600, marginTop: 5 }}>{c.tipo}</div>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 3 }}>{c.proveedor}</div>
           </div>
         ))}
       </div>
@@ -315,7 +315,7 @@ export default function DashboardTaller({ centro, refreshKey = 0 }) {
   ];
 
   return (
-    <div style={{ padding: '24px 20px', maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ padding: '24px 20px' }}>
 
       {/* ── KPIs ── */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
