@@ -151,11 +151,11 @@ function DashboardLayout() {
 
           {/* Actualizar datos */}
           <button onClick={handleRefresh} title="Actualizar datos" style={{
-            background: refreshing ? '#1a2e1a' : 'transparent',
-            border: `1px solid ${refreshing ? '#34d399' : '#2a3a2a'}`,
-            borderRadius: 7, color: refreshing ? '#34d399' : '#555', fontSize: 13,
-            padding: '6px 10px', cursor: 'pointer',
-            transition: 'all 0.2s',
+            background: refreshing ? '#1a2e1a' : '#1e1e1e',
+            border: `1px solid ${refreshing ? '#34d399' : '#4a4a4a'}`,
+            borderRadius: 7, color: refreshing ? '#34d399' : '#aaa', fontSize: 16,
+            padding: '5px 11px', cursor: 'pointer',
+            transition: 'all 0.2s', fontWeight: 700,
           }}>
             <span style={{ display: 'inline-block', animation: refreshing ? 'spin 0.6s linear infinite' : 'none' }}>↻</span>
           </button>

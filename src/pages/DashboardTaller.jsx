@@ -110,8 +110,8 @@ function KPI({ label, value, sub, color = '#4da6ff', warn = false, big = false }
       <div style={{ fontSize: big ? 38 : 32, fontWeight: 800, color, lineHeight: 1 }}>
         {value ?? '—'}
       </div>
-      <div style={{ fontSize: 13, color: '#888', marginTop: 6, lineHeight: 1.3 }}>{label}</div>
-      {sub && <div style={{ fontSize: 11, color: '#555', marginTop: 3 }}>{sub}</div>}
+      <div style={{ fontSize: 14, color: '#ddd', fontWeight: 700, marginTop: 7, lineHeight: 1.3 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{sub}</div>}
     </div>
   );
 }
