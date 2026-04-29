@@ -21,16 +21,23 @@ function addOneDay(iso) {
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
-// Días de [start, end) que caen dentro del período [pFrom, pTo] (ambos inclusive).
-// Si end=null → ongoing hasta hoy. Si pFrom/pTo=null → sin recorte.
-function overlapDays(start, end, pFrom, pTo) {
+// Días de [start, end] que caen dentro del período [pFrom, pTo] (ambos inclusive).
+// inclusive=true → el día end también cuenta (salida del taller = día perdido),
+//   excepto cuando start===end (reparación rápida en el mismo día = 0).
+// inclusive=false → end es exclusivo (comportamiento para diasEspera).
+// Si end=null → ongoing hasta hoy (hoy incluido si inclusive).
+function overlapDays(start, end, pFrom, pTo, inclusive = false) {
   if (!start) return 0;
-  const effectiveEnd = end || TODAY;
+  // Mismo día con inclusive: reparación rápida = 0 días
+  if (inclusive && end && end === start) return 0;
+  const effectiveEnd = inclusive
+    ? (end ? addOneDay(end) : addOneDay(TODAY))  // día salida incluido
+    : (end || TODAY);                             // end exclusivo
   if (!pFrom && !pTo) {
     return Math.max(0, Math.round((new Date(effectiveEnd) - new Date(start)) / 86400000));
   }
   const clipFrom = pFrom || '2000-01-01';
-  const clipTo   = pTo ? addOneDay(pTo) : addOneDay(TODAY); // exclusive upper bound
+  const clipTo   = pTo ? addOneDay(pTo) : addOneDay(TODAY);
   const oStart   = start > clipFrom ? start : clipFrom;
   const oEnd     = effectiveEnd < clipTo ? effectiveEnd : clipTo;
   if (oStart >= oEnd) return 0;
@@ -284,7 +291,7 @@ export default function DashboardTaller({ centro, refreshKey = 0 }) {
   const totalDiasEspera = enPeriodo.reduce((s, r) =>
     s + overlapDays(r.fechaSolicitud, r.fechaEntrada, desde, hasta), 0);
   const totalDiasTaller = enPeriodo.reduce((s, r) =>
-    s + (r.fechaEntrada ? overlapDays(r.fechaEntrada, r.fechaSalida, desde, hasta) : 0), 0);
+    s + (r.fechaEntrada ? overlapDays(r.fechaEntrada, r.fechaSalida, desde, hasta, true) : 0), 0);
 
   const conDiasTaller = enPeriodo.filter(r => r.diasTaller != null && r.fechaEntrada && r.fechaSalida);
   const mediaTaller   = conDiasTaller.length

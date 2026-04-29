@@ -1482,8 +1482,13 @@ app.get('/api/:centro/taller', requireCentroAccess, async (req, res) => {
         const quienRecogió   = g(22);
 
         const diasEspera = diffDays(fechaSolicitud, fechaEntrada || today);
+        // Día de salida cuenta como día perdido (el camión aún no estaba disponible).
+        // Excepción: si entrada y salida son el mismo día = reparación rápida = 0.
+        const addDay = iso => { const d = new Date(iso); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); };
         const diasTaller = fechaEntrada
-          ? diffDays(fechaEntrada, fechaSalida || today)
+          ? (fechaSalida === fechaEntrada
+            ? 0
+            : diffDays(fechaEntrada, fechaSalida ? addDay(fechaSalida) : addDay(today)))
           : null;
 
         return {
