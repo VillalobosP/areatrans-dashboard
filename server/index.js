@@ -1455,9 +1455,13 @@ app.get('/api/:centro/taller', requireCentroAccess, async (req, res) => {
 
     function parseFecha(v) {
       if (!v) return null;
-      const s = String(v).trim();
+      // Eliminar componente horario si lo hay ("15/04/2026 14:30" → "15/04/2026")
+      const s = String(v).trim().split(/[\sT]/)[0];
+      // DD/MM/YYYY o DD-MM-YYYY
       const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
       if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      // YYYY-MM-DD (ISO)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
       return null;
     }
     function diffDays(d1, d2) {
